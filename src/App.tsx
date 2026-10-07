@@ -103,7 +103,8 @@ export default function App() {
     {!started && <StartScreen onStart={() => { setStarted(true); setIntro('playing'); void voice.connect(); }} />}
     <div className="stage" inert={!started}>
       <div className="phone" data-testid="phone">
-        <div className="camera-view" data-testid="camera-view"><Scene world={world} /></div>
+        {/* Grandma's hands are not steady: CSS shake layers scale with what she is doing. */}
+        <div className={`camera-view ${world.phone.placement === 'hand' && running ? 'handheld' : ''} ${world.active?.to ? 'walking' : ''} stress-${gameController.getObservation().stressBand}`} data-testid="camera-view"><Scene world={world} /></div>
 
         <div className="call-time"><span className={`dot ${running ? 'live' : ''}`} />{elapsed}</div>
         {intro === 'done' && running && <div className={`turn-banner ${turns.turn}`} role="status">
