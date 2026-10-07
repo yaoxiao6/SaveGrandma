@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { OpenAIRealtimeWebRTC, RealtimeSession, type RealtimeItem } from '@openai/agents/realtime';
 import { grandmaAgent } from './grandma';
-import { GRANDMA_VOICE, REALTIME_MODEL } from './model';
+import { GRANDMA_SPEED, GRANDMA_VOICE, REALTIME_MODEL } from './model';
 
 export type VoiceStatus = 'idle' | 'microphone' | 'connecting' | 'connected' | 'error';
 
@@ -70,7 +70,7 @@ export function useVoice() {
       config: {
         audio: {
           input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' }, turnDetection: { type: 'semantic_vad', eagerness: 'high' } },
-          output: { voice: GRANDMA_VOICE },
+          output: { voice: GRANDMA_VOICE, speed: GRANDMA_SPEED },
         },
       },
     });
