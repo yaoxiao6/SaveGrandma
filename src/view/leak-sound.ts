@@ -11,7 +11,7 @@ const FADE_MS = 500;
  * relative to its starting value (1 = normal, up to 4 after wrong turns) and raises the volume.
  * Fades out when the leak stops, the call pauses, or the game ends.
  */
-export function useLeakSound(active: boolean, intensity: number) {
+export function useLeakSound(active: boolean, intensity: number, cut = false) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const fade = useRef<number | null>(null);
 
@@ -24,10 +24,18 @@ export function useLeakSound(active: boolean, intensity: number) {
     return () => { element.pause(); element.src = ''; audio.current = null; };
   }, []);
 
+  // Game over: silence at once, no fade, so the outro owns the soundtrack.
+  useEffect(() => {
+    if (!cut) return;
+    if (fade.current) { cancelAnimationFrame(fade.current); fade.current = null; }
+    const element = audio.current;
+    if (element) { element.pause(); element.currentTime = 0; element.volume = 0; }
+  }, [cut]);
+
   const target = active ? Math.min(MAX_VOLUME, BASE_VOLUME + (Math.max(1, intensity) - 1) * 0.18) : 0;
   useEffect(() => {
     const element = audio.current;
-    if (!element) return;
+    if (!element || cut) return;
     if (fade.current) { cancelAnimationFrame(fade.current); fade.current = null; }
     const ramp = (to: number, then?: () => void) => {
       const from = element.volume; const start = performance.now();
@@ -42,5 +50,5 @@ export function useLeakSound(active: boolean, intensity: number) {
     // Playback always follows a user gesture (Start), so autoplay is permitted here.
     if (element.paused) void element.play().then(() => ramp(target)).catch(() => {});
     else ramp(target);
-  }, [target]);
+  }, [target, cut]);
 }

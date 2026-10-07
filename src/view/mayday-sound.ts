@@ -6,7 +6,7 @@ const VOLUME = 0.22;
 const FADE_MS = 400;
 
 /** Plays the alarm loop quietly while `active`, fading in and out so it never cuts harshly. */
-export function useMaydaySiren(active: boolean) {
+export function useMaydaySiren(active: boolean, cut = false) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const fade = useRef<number | null>(null);
 
@@ -19,9 +19,17 @@ export function useMaydaySiren(active: boolean) {
     return () => { element.pause(); element.src = ''; audio.current = null; };
   }, []);
 
+  // Game over: silence at once, no fade, so the outro owns the soundtrack.
+  useEffect(() => {
+    if (!cut) return;
+    if (fade.current) { cancelAnimationFrame(fade.current); fade.current = null; }
+    const element = audio.current;
+    if (element) { element.pause(); element.currentTime = 0; element.volume = 0; }
+  }, [cut]);
+
   useEffect(() => {
     const element = audio.current;
-    if (!element) return;
+    if (!element || cut) return;
     if (fade.current) { cancelAnimationFrame(fade.current); fade.current = null; }
     const ramp = (to: number, then?: () => void) => {
       const from = element.volume; const start = performance.now();
@@ -36,5 +44,5 @@ export function useMaydaySiren(active: boolean) {
     // Playback always follows a user gesture (Start), so autoplay is permitted here.
     if (element.paused) void element.play().then(() => ramp(VOLUME)).catch(() => {});
     else ramp(VOLUME);
-  }, [active]);
+  }, [active, cut]);
 }

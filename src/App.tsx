@@ -4,7 +4,7 @@ import Scene from './view/Scene';
 import StartScreen from './view/StartScreen';
 import Intro, { GREETING } from './view/Intro';
 import Outro, { OUTRO_LINES } from './view/Outro';
-import { speak } from './voice/grandma-voice';
+import { speak, stopSpeaking } from './voice/grandma-voice';
 import { EXAMPLES, parseInstruction } from './voice/text-commands';
 import { useVoice } from './voice/useVoice';
 import { useIntroMusic } from './view/intro-music';
@@ -30,11 +30,12 @@ export default function App() {
   const voice = useVoice();
   useIntroMusic(started ? 'off' : 'title');
   // Water keeps dripping as long as the leak flows during a live call; louder after a wrong turn.
-  useLeakSound(world.stage === 'running' && world.leakRate > 0, world.leakRate / TUNING.initialLeakPerSecond);
+  const ended = world.stage === 'won' || world.stage === 'lost';
+  useLeakSound(world.stage === 'running' && world.leakRate > 0, world.leakRate / TUNING.initialLeakPerSecond, ended);
   // Mayday: in the final minute before flooding, the bathroom flashes red and a siren sounds.
   const secondsLeft = world.leakRate > 0 ? (TUNING.floodThreshold - world.water) / world.leakRate : Infinity;
   const mayday = world.stage === 'running' && secondsLeft <= MAYDAY_SECONDS;
-  useMaydaySiren(mayday);
+  useMaydaySiren(mayday, ended);
   const { setMute } = voice;
   const say = (who: Line['who'], text: string) => setLines(old => [...old, line(who, text)].slice(-40));
   useEffect(() => gameController.subscribe(event => {
@@ -75,6 +76,7 @@ export default function App() {
   useEffect(() => {
     if (!terminal) return;
     const text = OUTRO_LINES[world.stage as 'won' | 'lost'];
+    stopSpeaking();
     if (voice.status === 'connected') voice.sayLine(text); else void speak(text);
     say('grandma', text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
