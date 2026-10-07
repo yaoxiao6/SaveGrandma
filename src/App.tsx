@@ -54,6 +54,8 @@ export default function App() {
     onPlayerTurnEnd: () => { if (voice.status === 'connected') voice.respond(); },
   });
   const playersTurn = turns.turn === 'player' && running && intro === 'done';
+  // When the caller stops talking, the server commits their speech; that ends the turn with no button needed.
+  useEffect(() => { if (voice.speechEnded && playersTurn) turns.endPlayerTurn(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [voice.speechEnded]);
   // The mic is open only during the player's turn, so input and output never overlap.
   useEffect(() => { setMute(!playersTurn); }, [playersTurn, setMute]);
   useEffect(() => {
@@ -114,7 +116,6 @@ export default function App() {
           {world.active && <div className="progress" aria-hidden="true"><i style={{ width: `${world.active.elapsed / world.active.duration * 100}%` }} /></div>}
           <div className="mic-row">
           <button type="button" className={`mic ${voice.status} ${voice.speaking ? 'speaking' : ''} ${playersTurn && voice.status === 'connected' ? 'listening' : 'muted'}`} aria-label={voiceLabel} title={voiceLabel} disabled={voice.status === 'microphone' || voice.status === 'connecting' || (voice.status === 'connected' && !running)} onClick={onMic}><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg></button>
-          {playersTurn && <button type="button" className="done-button" onClick={() => turns.endPlayerTurn()} aria-label="End your turn">Done ✓</button>}
           </div>
           {/* Typed fallback: only shown when the voice agent is not connected (mic blocked, no key, offline). */}
           {voice.status !== 'connected' && <form className="composer" onSubmit={send}>

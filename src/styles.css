@@ -160,5 +160,3 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .mic:not(:disabled):hover { background: #ffffff30; }
 .mic.speaking { border-color: var(--accent); color: var(--accent); }
 @keyframes listen-pulse { 0%, 100% { box-shadow: 0 0 0 4px #ffd23f22; } 50% { box-shadow: 0 0 0 12px #ffd23f11; } }
-.done-button { height: 40px; padding: 0 16px; border-radius: 20px; border: 2px solid #ffd23f; background: #ffd23f; color: #3b2a4a; font-weight: 700; font-size: 13px; }
-.done-button:hover:not(:disabled) { background: #ffe36e; }
