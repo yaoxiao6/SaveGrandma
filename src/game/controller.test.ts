@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, Simulation } from './controller';
-import { OBJECTS, TUNING } from './config';
-import { go, grab, PRESETS, runPreset } from './presets';
+import { TUNING } from './config';
+import { FIND_WRENCH, go, grab, open, PRESETS, runPreset } from './presets';
 import type { Action, ActionRequest, GameEvent, Result } from './types';
 
 function setup(seed = 7) {
@@ -10,14 +10,15 @@ function setup(seed = 7) {
   controller.subscribe(event => events.push(event));
   controller.start();
   const send = (action: Action, unresolved?: string[]) => controller.submitAction({ runId: controller.getObservation().runId, action, unresolved });
-  const run = (...actions: Action[]) => { actions.forEach(a => send(a)); sim.advance(40); };
+  // Advance until Grandma is idle (at most 40 s) so chained steps do not run into the one-minute flood.
+  const run = (...actions: Action[]) => { actions.forEach(a => send(a)); for (let i = 0; i < 800 && (sim.readState().active || sim.readState().queue.length); i++) sim.advance(0.05); };
   const results = () => events.filter((e): e is Extract<GameEvent, { type: 'action_result' }> => e.type === 'action_result').map(e => e.result);
   const last = (): Result => results().at(-1)!;
   return { sim, controller, events, send, run, results, last };
 }
 
 describe('public-controller end-to-end solutions', () => {
-  for (const preset of ['valve', 'wrench', 'patch']) it(`wins via ${preset} using only structured actions`, () => {
+  for (const preset of ['wrench']) it(`wins via ${preset} using only structured actions`, () => {
     const t = setup();
     expect(runPreset(t.controller, preset).every(r => r.accepted)).toBe(true);
     t.sim.advance(90);
@@ -29,19 +30,19 @@ describe('public-controller end-to-end solutions', () => {
     t.sim.advance(100);
     expect(t.sim.readState().elapsed).toBe(elapsed);
   });
-  it('floods at five minutes, not before, without intervention', () => {
-    const t = setup(); t.sim.advance(299.9);
+  it('floods at two minutes, not before, without intervention', () => {
+    const t = setup(); t.sim.advance(119.9);
     expect(t.controller.getObservation().stage).toBe('running');
     t.sim.advance(0.1);
     expect(t.controller.getObservation().stage).toBe('lost');
     expect(t.sim.readState().water).toBe(TUNING.floodThreshold);
   });
-  it('towels and bucket are bounded, cannot be repeatedly collected, and add 60 seconds total', () => {
-    const t = setup(); runPreset(t.controller, 'mitigation'); t.sim.advance(70);
+  it('towels and bucket are bounded, cannot be repeatedly collected, and add 30 seconds total', () => {
+    const t = setup(); runPreset(t.controller, 'mitigation'); t.sim.advance(30);
     expect(t.results().every(r => r.status === 'completed')).toBe(true);
     expect(t.sim.readState().towelUsed).toBe(true);
     expect(t.sim.readState().bucketUsed).toBe(true);
-    t.sim.advance(289.9);
+    t.sim.advance(149.9 - t.sim.readState().elapsed);
     expect(t.sim.readState().stage).toBe('running');
     t.sim.advance(0.1);
     expect(t.sim.readState().stage).toBe('lost');
@@ -49,30 +50,35 @@ describe('public-controller end-to-end solutions', () => {
     expect(t.sim.readState().items.towels.location).toBe('used');
   });
   it('wrong explicit rotations worsen leakage and shorten the available time', () => {
-    const t = setup(); runPreset(t.controller, 'wrong_way'); t.sim.advance(15);
+    const t = setup(); runPreset(t.controller, 'wrong_way'); t.sim.advance(30);
     expect(t.last().code).toBe('LEAK_WORSENED');
     expect(t.sim.readState().leakRate).toBeCloseTo(TUNING.initialLeakPerSecond * TUNING.wrongRotationMultiplier);
-    t.sim.advance(200); expect(t.sim.readState().stage).toBe('lost');
+    t.sim.advance(60); expect(t.sim.readState().stage).toBe('lost');
   });
 });
 
 describe('prerequisites never perform missing steps', () => {
-  for (const [preset, code] of Object.entries({ missing_tool: 'MISSING_TOOL', posture: 'WRONG_POSTURE', reach: 'OUT_OF_REACH', hands: 'HANDS_FULL', clarification: 'CLARIFICATION_NEEDED' })) it(`reports ${code}`, () => {
+  for (const [preset, code] of Object.entries({ missing_tool: 'MISSING_TOOL', wrong_tool: 'MISSING_TOOL', posture: 'WRONG_POSTURE', reach: 'OUT_OF_REACH', hands: 'HANDS_FULL', clarification: 'CLARIFICATION_NEEDED' })) it(`reports ${code} via ${preset}`, () => {
     const t = setup(); runPreset(t.controller, preset); t.sim.advance(30);
     expect(t.last().code).toBe(code); expect(t.sim.readState().stage).toBe('running');
     expect(t.sim.readState().leakRate).toBe(TUNING.initialLeakPerSecond);
   });
-  it('requires the phone down before applying a patch', () => {
-    const t = setup(); t.run(go('patch'), grab('patch'), go('pipe_joint'), { type: 'bend' }, { type: 'apply_patch', target: { id: 'pipe_joint' } });
-    expect(t.last().code).toBe('PHONE_MUST_BE_PLACED'); expect(t.sim.readState().patchApplied).toBe(false);
+  it('keeps tools hidden until their toolbox is opened', () => {
+    const t = setup();
+    expect(JSON.stringify(t.controller.getObservation())).not.toContain('wrench');
+    t.run(go('blue_toolbox'), grab('wrench'));
+    expect(t.last().code).toBe('NOT_FOUND');
+    const box = (Object.entries(t.sim.readState().toolboxes).find(([, b]) => b.tool === 'wrench')!)[0] as 'red_toolbox';
+    t.run(open(box));
+    expect(t.last().message).toContain('wrench');
+    expect(t.controller.getObservation().surroundings.some(o => o.id === 'wrench')).toBe(true);
+    t.run(open(box)); expect(t.last().code).toBe('ALREADY_DONE');
+    t.run(grab('wrench')); expect(t.sim.readState().grandma.held).toEqual(['wrench']);
   });
-  it('requires patch before clamp', () => {
-    const t = setup(); t.run(go('dry_spot'), { type: 'place_phone', target: { id: 'dry_spot' } }, go('clamp'), grab('clamp'), go('pipe_joint'), { type: 'bend' }, { type: 'secure_patch', target: { id: 'pipe_joint' } });
-    expect(t.last().code).toBe('PATCH_REQUIRED');
-  });
-  it('requires a spare stabilizing hand even with the phone down', () => {
-    const t = setup(); t.run(go('dry_spot'), { type: 'place_phone', target: { id: 'dry_spot' } }, go('clamp'), grab('clamp'), go('patch'), grab('patch'), go('pipe_joint'), { type: 'bend' }, { type: 'apply_patch', target: { id: 'pipe_joint' } });
-    expect(t.last().code).toBe('HANDS_FULL');
+  it('deals the tools differently across seeds but identically for one seed', () => {
+    const deal = (seed: number) => Object.values(setup(seed).sim.readState().toolboxes).map(b => b.tool).join();
+    expect(deal(7)).toBe(deal(7));
+    expect(new Set([1, 2, 3, 4, 5, 6, 7, 8].map(deal)).size).toBeGreaterThan(1);
   });
   it('requires standing to walk and bending for a floor bucket', () => {
     const t = setup(); t.run(go('bucket'), grab('bucket'));
@@ -84,7 +90,7 @@ describe('prerequisites never perform missing steps', () => {
     t.run({ type: 'move', direction: 'backward', meters: 3 });
     expect(t.last().code).toBe('BLOCKED'); expect(t.sim.readState().grandma.position).toEqual(before);
   });
-  it('rejects blocked paths through the toilet', () => {
+  it('rejects blocked paths through the tool table and toilet', () => {
     const t = setup(); t.run({ type: 'move', direction: 'left', meters: 2 }, { type: 'move', direction: 'forward', meters: 3.7 });
     expect(t.last().code).toBe('BLOCKED');
   });
@@ -101,41 +107,44 @@ describe('interpretation belongs to the simulation, without an autonomous solver
   it('unknown descriptions and unresolved direction ask for clarification', () => {
     const t = setup(); t.run({ type: 'grab', target: { description: 'that thing' } });
     expect(t.last().status).toBe('clarification_needed');
-    t.send({ type: 'rotate', target: { id: 'supply_valve' }, direction: 'clockwise' }, ['direction']); t.sim.advance(1);
+    t.send({ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }, ['direction']); t.sim.advance(1);
     expect(t.last().code).toBe('CLARIFICATION_NEEDED');
   });
   it('explicit qualifiers disambiguate and contradictory qualifiers ask', () => {
-    const t = setup(); t.run(go('supply_valve'), { type: 'rotate', target: { description: 'fitting', qualifiers: { color: 'red' } }, direction: 'clockwise' });
-    expect(t.sim.readState().stage).toBe('won');
+    const t = setup(); t.run(go('blue_toolbox'), { type: 'open', target: { description: 'toolbox', qualifiers: { color: 'red' } } });
+    expect(t.last().code).toBe('OK'); expect(t.sim.readState().toolboxes.red_toolbox.open).toBe(true);
     const t2 = setup(); t2.run({ type: 'grab', target: { id: 'wrench', qualifiers: { color: 'red' } } });
     expect(t2.last().code).toBe('CLARIFICATION_NEEDED');
   });
-  it('seeded ambiguous targets produce a plausible alternate, while another seed asks', () => {
+  it('seeded ambiguous targets produce a plausible alternate for some seeds and ask for others, reproducibly', () => {
     const trial = (seed: number) => {
-      const t = setup(seed); t.run(go('supply_valve'));
-      t.run({ type: 'rotate', target: { candidates: ['supply_valve', 'pipe_joint'] }, direction: 'clockwise' });
+      const t = setup(seed); t.run(go('blue_toolbox'));
+      t.run({ type: 'open', target: { candidates: ['red_toolbox', 'blue_toolbox', 'green_toolbox'] } });
       return t;
     };
-    const a = trial(7), b = trial(7);
-    expect(a.events.filter(e => e.type === 'misunderstanding')).toHaveLength(1);
-    expect(a.last().targetId).toBe('pipe_joint');
-    expect(a.last().code).toBe('WRONG_POSTURE');
+    const seeds = Array.from({ length: 30 }, (_, i) => i);
+    const mistaken = seeds.filter(seed => trial(seed).events.some(e => e.type === 'misunderstanding'));
+    expect(mistaken.length).toBeGreaterThan(0); expect(mistaken.length).toBeLessThan(seeds.length);
+    const a = trial(mistaken[0]), b = trial(mistaken[0]);
+    // The red box is nearest from the approach point, so a mistake never picks it.
+    expect(a.last().targetId).not.toBe('red_toolbox'); expect(a.last().code).toBe('OK');
     expect(b.last().targetId).toBe(a.last().targetId);
-    expect(trial(1).last().code).toBe('CLARIFICATION_NEEDED');
+    const asked = seeds.find(seed => !mistaken.includes(seed))!;
+    expect(trial(asked).last().code).toBe('CLARIFICATION_NEEDED');
   });
   it('precise valid instructions are reliable at every stress band across seeds', () => {
-    for (const elapsed of [0, 120, 230]) for (const seed of [1, 7, 22, 42, 99]) {
-      const t = setup(seed); t.sim.advance(elapsed); t.run(go('supply_valve'), { type: 'rotate', target: { id: 'supply_valve' }, direction: 'clockwise' });
+    for (const elapsed of [0, 25, 41]) for (const seed of [1, 7, 22, 42, 99]) {
+      const t = setup(seed); t.sim.advance(elapsed); t.run(...FIND_WRENCH, go('pipe_joint'), { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' });
       expect(t.sim.readState().stage).toBe('won');
       expect(t.events.some(e => e.type === 'misunderstanding')).toBe(false);
     }
   });
   it('uses 15/30/45 percent stress thresholds with reproducible increased mistakes', () => {
-    const counts = [0, 120, 230].map(elapsed => {
+    const counts = [0, 50, 90].map(elapsed => {
       let mistakes = 0;
       for (let seed = 0; seed < 80; seed++) {
-        const t = setup(seed); t.sim.advance(elapsed); t.run(go('supply_valve'));
-        t.send({ type: 'rotate', target: { candidates: ['supply_valve', 'pipe_joint'] }, direction: 'clockwise' }); t.sim.advance(0.05);
+        const t = setup(seed); t.sim.advance(elapsed); t.run(go('blue_toolbox'));
+        t.send({ type: 'open', target: { candidates: ['red_toolbox', 'blue_toolbox', 'green_toolbox'] } }); t.sim.advance(0.05);
         if (t.events.some(e => e.type === 'misunderstanding')) mistakes++;
       }
       return mistakes;
@@ -145,7 +154,7 @@ describe('interpretation belongs to the simulation, without an autonomous solver
   });
   it('does not leak hidden repairs, capacities, RNG or solution metadata in observations', () => {
     const t = setup(); const obs = JSON.stringify(t.controller.getObservation());
-    for (const key of ['patchApplied', 'leakRate', 'seed', 'mistakes', 'capacity', 'solution', 'clockwise', 'TUNING']) expect(obs).not.toContain(key);
+    for (const key of ['toolboxes', 'wrench', 'hammer', 'screwdriver', 'leakRate', 'seed', 'mistakes', 'capacity', 'solution', 'clockwise', 'TUNING']) expect(obs).not.toContain(key);
     expect('readState' in t.controller).toBe(false);
   });
 });
@@ -172,7 +181,8 @@ describe('phone and reference frames', () => {
     t.run(go('dry_spot'), { type: 'retrieve_phone' }); expect(t.sim.readState().phone.placement).toBe('hand');
   });
   it('cannot retrieve a phone with both hands occupied', () => {
-    const t = setup(); t.run(go('dry_spot'), { type: 'place_phone', target: { id: 'dry_spot' } }, go('patch'), grab('patch'), go('clamp'), grab('clamp'), go('dry_spot'), { type: 'retrieve_phone' });
+    const t = setup(); t.run(go('dry_spot'), { type: 'place_phone', target: { id: 'dry_spot' } }, ...FIND_WRENCH, grab('hammer'), go('dry_spot'), { type: 'retrieve_phone' });
+    expect(t.sim.readState().grandma.held).toEqual(['wrench', 'hammer']);
     expect(t.last().code).toBe('HANDS_FULL');
   });
 });
@@ -186,30 +196,30 @@ describe('queue, lifecycle and ownership', () => {
     t.controller.resume(); t.sim.advance(8); expect(t.last().status).toBe('completed');
   });
   it('executes a compound instruction sequentially, with no early success', () => {
-    const t = setup(); t.send(go('wrench')); t.send(grab('wrench'));
+    const t = setup(); FIND_WRENCH.forEach(a => t.send(a));
     t.sim.advance(0.1); expect(t.sim.readState().grandma.held).toEqual([]);
-    expect(t.controller.getObservation().queuedActions).toBe(1);
-    t.sim.advance(8); expect(t.sim.readState().grandma.held).toEqual(['wrench']);
-    expect(t.results().map(r => r.code)).toEqual(['OK', 'OK']);
+    expect(t.controller.getObservation().queuedActions).toBe(FIND_WRENCH.length - 1);
+    t.sim.advance(12); expect(t.sim.readState().grandma.held).toEqual(['wrench']);
+    expect(t.results().map(r => r.code)).toEqual(FIND_WRENCH.map(() => 'OK'));
   });
   it('cancels active repair before its atomic commit and removes queued work', () => {
-    const t = setup(); t.run(go('supply_valve'));
-    t.send({ type: 'rotate', target: { id: 'supply_valve' }, direction: 'clockwise' }); t.send({ type: 'wait', seconds: 10 });
+    const t = setup(); t.run(...FIND_WRENCH, go('pipe_joint'), { type: 'bend' });
+    t.send({ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }); t.send({ type: 'wait', seconds: 10 });
     t.sim.advance(2); t.controller.cancelActions(); t.sim.advance(10);
     expect(t.sim.readState().stage).toBe('running'); expect(t.sim.readState().leakRate).toBe(TUNING.initialLeakPerSecond);
     expect(t.results().filter(r => r.status === 'cancelled')).toHaveLength(2);
   });
   it('cancels walking at its current location', () => {
-    const t = setup(); t.send(go('supply_valve')); t.sim.advance(1);
+    const t = setup(); t.send(go('pipe_joint')); t.sim.advance(1);
     const p = t.sim.readState().grandma.position; t.controller.cancelActions(); t.sim.advance(5);
     expect(t.sim.readState().grandma.position).toEqual(p); expect(p).not.toEqual({ x: 0, z: 0.9 });
   });
   it('reset cancels old work, resets everything, and rejects delayed old requests', () => {
-    const t = setup(); const old = t.controller.getObservation().runId; t.send(go('wrench')); t.sim.advance(0.1);
+    const t = setup(); const old = t.controller.getObservation().runId; t.send(go('blue_toolbox')); t.sim.advance(0.1);
     t.controller.reset({ seed: 99 }); t.controller.start();
     expect(t.controller.submitAction({ runId: old, action: { type: 'stand' } }).code).toBe('STALE_RUN');
     const s = t.sim.readState(); expect(s.seed).toBe(99); expect(s.water).toBe(0); expect(s.active).toBeNull(); expect(s.queue).toHaveLength(0);
-    expect(s.phone.mode).toBe('selfie'); expect(s.grandma.held).toEqual([]); expect(s.items.wrench.position).toEqual(OBJECTS.wrench.position);
+    expect(s.phone.mode).toBe('selfie'); expect(s.grandma.held).toEqual([]); expect(s.items.wrench.location).toBe('toolbox'); expect(Object.values(s.toolboxes).every(b => !b.open)).toBe(true);
     expect(t.results().some(r => r.runId === old && r.code === 'CANCELLED')).toBe(true);
   });
   it('mutating a request or observation cannot change queued work or simulation', () => {
@@ -229,7 +239,7 @@ describe('queue, lifecycle and ownership', () => {
     expect(t.last().code).toBe('CANCELLED'); expect(t.send({ type: 'stand' }).code).toBe('NOT_RUNNING');
   });
   it('has stable results across clock step sizes', () => {
-    const a = setup(), b = setup(); runPreset(a.controller, 'patch'); runPreset(b.controller, 'patch');
+    const a = setup(), b = setup(); runPreset(a.controller, 'wrench'); runPreset(b.controller, 'wrench');
     a.sim.advance(90); for (let i = 0; i < 1800; i++) b.sim.advance(0.05);
     expect(a.sim.readState().water).toBeCloseTo(b.sim.readState().water, 5);
     expect(a.sim.readState().stage).toBe(b.sim.readState().stage);
@@ -239,7 +249,7 @@ describe('queue, lifecycle and ownership', () => {
   });
   it('clock subdivisions do not change repair timing, water, or outcomes', () => {
     const a = setup(), b = setup(), c = setup();
-    for (const t of [a, b, c]) runPreset(t.controller, 'patch');
+    for (const t of [a, b, c]) runPreset(t.controller, 'wrench');
     a.sim.advance(90);
     for (let i = 0; i < 5400; i++) b.sim.advance(1 / 60);
     for (let i = 0; i < 900; i++) { c.sim.advance(0.017); c.sim.advance(0.083); }

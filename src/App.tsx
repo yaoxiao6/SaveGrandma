@@ -9,8 +9,11 @@ import { EXAMPLES, parseInstruction } from './voice/text-commands';
 import { useVoice } from './voice/useVoice';
 import { useIntroMusic } from './view/intro-music';
 import { useLeakSound } from './view/leak-sound';
+import { useMaydaySiren } from './view/mayday-sound';
 import { TUNING } from './game/config';
 import { PLAYER_TURN_SECONDS, useTurns } from './view/useTurns';
+
+const MAYDAY_SECONDS = 60;
 
 type Line = { id: number; who: 'you' | 'grandma' | 'note'; text: string };
 let lineSerial = 0;
@@ -28,6 +31,10 @@ export default function App() {
   useIntroMusic(started ? 'off' : 'title');
   // Water keeps dripping as long as the leak flows during a live call; louder after a wrong turn.
   useLeakSound(world.stage === 'running' && world.leakRate > 0, world.leakRate / TUNING.initialLeakPerSecond);
+  // Mayday: in the final minute before flooding, the bathroom flashes red and a siren sounds.
+  const secondsLeft = world.leakRate > 0 ? (TUNING.floodThreshold - world.water) / world.leakRate : Infinity;
+  const mayday = world.stage === 'running' && secondsLeft <= MAYDAY_SECONDS;
+  useMaydaySiren(mayday);
   const { setMute } = voice;
   const say = (who: Line['who'], text: string) => setLines(old => [...old, line(who, text)].slice(-40));
   useEffect(() => gameController.subscribe(event => {
@@ -106,7 +113,7 @@ export default function App() {
     {/* Connect inside the click so the mic prompt and audio unlock happen in the user gesture. */}
     {!started && <StartScreen onStart={() => { setStarted(true); setIntro('playing'); void voice.connect(); }} />}
     <div className="stage" inert={!started}>
-      <div className="phone" data-testid="phone">
+      <div className={`phone ${mayday ? 'mayday' : ''}`} data-testid="phone">
         {/* Grandma's hands are not steady: CSS shake layers scale with what she is doing. */}
         <div className={`camera-view ${world.phone.placement === 'hand' && running ? 'handheld' : ''} ${world.active?.to ? 'walking' : ''} stress-${gameController.getObservation().stressBand}`} data-testid="camera-view"><Scene world={world} /></div>
 

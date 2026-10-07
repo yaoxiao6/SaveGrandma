@@ -188,3 +188,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 @keyframes cam-tremble { from { transform: translate(-.6px, .4px); } to { transform: translate(.6px, -.5px); } }
 @keyframes cam-tremble-hard { from { transform: translate(-1.6px, 1.1px) rotate(-.15deg); } to { transform: translate(1.5px, -1.3px) rotate(.15deg); } }
 @media (prefers-reduced-motion: reduce) { .camera-view.handheld, .camera-view.handheld > div:first-child, .camera-view.handheld canvas { animation: none; transform: none; } }
+
+/* Mayday: final minute before the flood */
+.camera-view::after { content: ""; position: absolute; inset: -8%; background: #ff2020; mix-blend-mode: multiply; opacity: 0; pointer-events: none; }
+.phone.mayday .camera-view::after { animation: mayday-flash 1s ease-in-out infinite; }
+.phone.mayday .call-time { color: #ff7b6b; animation: mayday-blink 1s steps(2) infinite; }
+.phone.mayday .call-time .dot { background: #ff4b3b; box-shadow: 0 0 0 3px #ff4b3b55; }
+@keyframes mayday-flash { 0%, 100% { opacity: 0; } 45% { opacity: .55; } 55% { opacity: .55; } }
+@keyframes mayday-blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .phone.mayday .camera-view::after { animation: none; opacity: .3; } }

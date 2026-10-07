@@ -9,3 +9,8 @@ Filename: water-leak.mp3
 Title: Water Leak Sound Effect
 Supplied by: the project owner (gibumkang) on 2026-10-07 for the leak ambience.
 License / source URL: not recorded yet; confirm before public release.
+
+Filename: alarm.mp3
+Title: Alarm Sound Effect
+Supplied by: the project owner (gibumkang) on 2026-10-07 for the final-minute alarm.
+License / source URL: not recorded yet; confirm before public release.

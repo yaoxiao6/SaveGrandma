@@ -13,7 +13,7 @@ function setup() {
 const wait: CommandStep = { action: { type: 'wait', seconds: 1 } };
 
 describe('Yao’s command-session integration', () => {
-  for (const key of ['valve', 'wrench', 'patch']) it(`runs the ${key} solution one result at a time`, async () => {
+  for (const key of ['wrench']) it(`runs the ${key} solution one result at a time`, async () => {
     const t = setup(); const turn = t.session.beginTurn();
     const pending = t.session.submit(turn.token, PRESETS[key].actions.map(action => ({ action })));
     expect(t.controller.getObservation().queuedActions).toBe(1);
@@ -33,7 +33,7 @@ describe('Yao’s command-session integration', () => {
   });
   it('stops on a clarification instead of continuing the compound request', async () => {
     const t = setup(); const turn = t.session.beginTurn();
-    const pending = t.session.submit(turn.token, [{ action: { type: 'rotate', target: { id: 'supply_valve' } } }, wait]);
+    const pending = t.session.submit(turn.token, [{ action: { type: 'rotate', target: { id: 'pipe_joint' } } }, wait]);
     t.simulation.advance(2); expect((await pending).code).toBe('CLARIFICATION_NEEDED');
     expect(t.controller.getObservation().queuedActions).toBe(0);
   });
@@ -106,14 +106,14 @@ describe('Yao’s command-session integration', () => {
   });
   it('stops a sequence at a terminal win even if the transcript contains more instructions', async () => {
     const t = setup(); const turn = t.session.beginTurn();
-    const pending = t.session.submit(turn.token, [...PRESETS.valve.actions.map(action => ({ action })), wait]);
-    t.simulation.advance(20); const outcome = await pending;
+    const pending = t.session.submit(turn.token, [...PRESETS.wrench.actions.map(action => ({ action })), wait]);
+    t.simulation.advance(40); const outcome = await pending;
     expect(outcome.stage).toBe('won'); expect(outcome.code).toBe('TERMINAL'); expect(outcome.skipped).toBe(1);
   });
   it('flooding settles pending work and aborts pending provider requests', async () => {
     const t = setup(); const turn = t.session.beginTurn();
     const pending = t.session.submit(turn.token, [{ action: { type: 'wait', seconds: 500 } }, wait]);
-    t.simulation.advance(400); expect((await pending).stage).toBe('lost'); expect(turn.signal.aborted).toBe(true);
+    t.simulation.advance(130); expect((await pending).stage).toBe('lost'); expect(turn.signal.aborted).toBe(true);
   });
   it('disposing aborts the pending turn and prevents subsequent submissions', async () => {
     const t = setup(); const turn = t.session.beginTurn(); const pending = t.session.submit(turn.token, [wait]);
@@ -130,7 +130,7 @@ describe('shared input contract', () => {
   });
   it('does not silently discard unrecognized qualifiers or action fields', () => {
     expect(isActionRequest({ runId: 'x', action: { type: 'wait', seconds: 1, target: { id: 'pipe_joint' } } })).toBe(false);
-    expect(isActionRequest({ runId: 'x', action: { type: 'grab', target: { id: 'clamp', qualifiers: { side: 'left' } } } })).toBe(false);
+    expect(isActionRequest({ runId: 'x', action: { type: 'grab', target: { id: 'hammer', qualifiers: { side: 'left' } } } })).toBe(false);
     expect(isActionRequest({ runId: 'x', action: { type: 'wait', seconds: Infinity } })).toBe(false);
   });
 });
