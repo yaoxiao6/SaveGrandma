@@ -1,7 +1,9 @@
 import { Component, useRef, type ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Group, Vector3 } from 'three';
-import { OBJECTS, radians, TUNING } from '../game/config';
+import { Group } from 'three';
+import { SCENE_VISUALS } from '../creative/visuals';
+import { getSceneFrame, type SceneFrame } from './presentation';
+import { radians, TUNING } from '../game/config';
 import type { WorldState } from '../game/controller';
 import type { ItemId } from '../game/types';
 
@@ -13,6 +15,7 @@ function Sphere({ position, size, color }: { position: [number, number, number];
   return <mesh position={position} scale={size} castShadow><sphereGeometry args={[1, 16, 12]} /><meshStandardMaterial color={color} roughness={0.85} /></mesh>;
 }
 function Tool({ id }: { id: ItemId }) {
+  if (SCENE_VISUALS.Tool) return <SCENE_VISUALS.Tool id={id} />;
   switch (id) {
     case 'wrench': return <group rotation={[Math.PI / 2, 0, 0]}><Box position={[0, 0, 0]} size={[0.06, 0.32, 0.04]} color={colors.metal} /><Box position={[0.06, 0.17, 0]} size={[0.08, 0.13, 0.05]} color={colors.metal} /><Box position={[-0.06, 0.17, 0]} size={[0.08, 0.13, 0.05]} color={colors.metal} /></group>;
     case 'patch': return <Box position={[0, 0.025, 0]} size={[0.25, 0.04, 0.17]} color="#303d3a" />;
@@ -22,7 +25,7 @@ function Tool({ id }: { id: ItemId }) {
   }
 }
 
-function Grandma({ world }: { world: WorldState }) {
+function Grandma({ world, frame }: { world: WorldState; frame: SceneFrame }) {
   const model = useRef<Group>(null);
   const leftLeg = useRef<Group>(null);
   const rightLeg = useRef<Group>(null);
@@ -32,13 +35,12 @@ function Grandma({ world }: { world: WorldState }) {
     if (leftLeg.current) leftLeg.current.rotation.x = walk;
     if (rightLeg.current) rightLeg.current.rotation.x = -walk;
     if (model.current) {
-      const progress = active ? active.elapsed / active.duration : 0;
-      const bend = active?.request.action.type === 'bend' ? progress : active?.request.action.type === 'stand' ? 1 - progress : world.grandma.posture === 'bent' ? 1 : 0;
+      const bend = frame.character.bend;
       model.current.rotation.x = bend * 0.65;
       model.current.position.y = -bend * 0.22;
     }
   });
-  return <group name="grandma_root" position={[world.grandma.position.x, 0, world.grandma.position.z]} rotation={[0, radians(world.grandma.yaw), 0]}>
+  return <group name="grandma_root" position={[world.grandma.position.x, 0, world.grandma.position.z]} rotation={[0, radians(frame.character.yaw), 0]}>
     <group ref={leftLeg} position={[-0.12, 0.43, 0]}><Box position={[0, -0.2, 0]} size={[0.13, 0.42, 0.14]} color="#647069" /><Box position={[0, -0.4, 0.04]} size={[0.16, 0.09, 0.25]} color="#4a524b" /></group>
     <group ref={rightLeg} position={[0.12, 0.43, 0]}><Box position={[0, -0.2, 0]} size={[0.13, 0.42, 0.14]} color="#647069" /><Box position={[0, -0.4, 0.04]} size={[0.16, 0.09, 0.25]} color="#4a524b" /></group>
     <group ref={model}>
@@ -57,36 +59,21 @@ function Grandma({ world }: { world: WorldState }) {
   </group>;
 }
 
-function PhoneCamera({ world }: { world: WorldState }) {
-  const position = useRef(new Vector3());
-  const target = useRef(new Vector3());
+function PhoneCamera({ frame }: { frame: SceneFrame }) {
   useFrame(({ camera }) => {
-    const s = world;
-    const g = s.grandma;
-    if (s.phone.placement === 'dry_spot') {
-      position.current.set(OBJECTS.dry_spot.position.x, 1.32, OBJECTS.dry_spot.position.z);
-      const yaw = radians(s.phone.fixedYaw + (s.phone.mode === 'selfie' ? 180 : 0));
-      target.current.copy(position.current).add(new Vector3(Math.sin(yaw), -0.18, Math.cos(yaw)));
-    } else {
-      const bodyYaw = radians(g.yaw);
-      const height = g.posture === 'bent' ? 0.95 : 1.4;
-      // Both lenses share the same phone position. No spectator/orbit camera.
-      position.current.set(g.position.x + Math.sin(bodyYaw) * 0.55, height, g.position.z + Math.cos(bodyYaw) * 0.55);
-      const yaw = radians(g.yaw + s.phone.yaw + (s.phone.mode === 'selfie' ? 180 : 0));
-      const pitch = radians(s.phone.pitch + (s.phone.mode === 'selfie' ? -4 : -18));
-      target.current.copy(position.current).add(new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)));
-    }
-    camera.position.copy(position.current);
-    camera.lookAt(target.current);
+    camera.position.set(...frame.phone.position);
+    camera.lookAt(...frame.phone.target);
   });
   return null;
 }
 
 function Bathroom({ world }: { world: WorldState }) {
+  const frame = getSceneFrame(world);
   return <>
     <color attach="background" args={['#d8e3d8']} />
     <ambientLight intensity={1.4} />
     <directionalLight position={[0, 5, 1]} intensity={2.2} castShadow shadow-mapSize={[1024, 1024]} />
+    {SCENE_VISUALS.Environment ? <SCENE_VISUALS.Environment frame={frame} /> : <>
     <Box position={[0, -0.075, 2.75]} size={[6, 0.15, 6.5]} color={colors.tile} />
     <gridHelper args={[6, 12, '#bcc8be', '#cbd2c8']} position={[0, 0.007, 2.75]} />
     <Box position={[0, 1.7, 5.4]} size={[6, 3.4, 0.15]} color={colors.wall} />
@@ -114,12 +101,15 @@ function Bathroom({ world }: { world: WorldState }) {
     <Box position={[2.2, 0.8, 5.02]} size={[0.65, 0.8, 0.3]} color="#eeeede" />
     <Sphere position={[2.2, 0.47, 4.68]} size={[0.37, 0.24, 0.5]} color="#f4f3e7" />
     <Box position={[2.2, 0.22, 4.75]} size={[0.42, 0.44, 0.5]} color="#e8e9dc" />
+    </>}
     {Object.entries(world.items).filter(([, item]) => item.location === 'world').map(([id, item]) => <group key={id} name={id} position={[item.position.x, item.height + 0.025, item.position.z]}><Tool id={id as ItemId} /></group>)}
     {world.towelUsed && <group position={[-1.55, 0.04, 4]}><Tool id="towels" /></group>}
     {world.bucketUsed && <group position={[-1.3, 0.2, 4.55]}><Tool id="bucket" /></group>}
     {world.water > 0 && <mesh position={[0, 0.015 + world.water / TUNING.floodThreshold * 0.3, 2.75]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[5.95, 6.4]} /><meshStandardMaterial color="#5ea8be" transparent opacity={0.22 + world.water / 250} roughness={0.2} depthWrite={false} /></mesh>}
-    <Grandma world={world} />
-    <PhoneCamera world={world} />
+    {SCENE_VISUALS.Grandma
+      ? <group name="grandma_root" position={frame.character.position} rotation={[0, radians(frame.character.yaw), 0]}><SCENE_VISUALS.Grandma frame={frame} /></group>
+      : <Grandma world={world} frame={frame} />}
+    <PhoneCamera frame={frame} />
   </>;
 }
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {

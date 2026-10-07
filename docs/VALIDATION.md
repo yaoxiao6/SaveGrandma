@@ -2,7 +2,9 @@
 
 ## Automated simulation
 
-Final implementation check: all **39 tests passed**, TypeScript passed, and Vite produced the production build. Dependency installation reported **0 vulnerabilities** after updating the test runner. The available Node 23 runtime ran the checks successfully but is outside Vitest’s declared engine range; `.nvmrc` selects the recommended Node 22 LTS for teammates.
+Latest integration milestone: **72 tests passed**, TypeScript passed, and Vite produced the production build. The initial dependency installation reported **0 vulnerabilities** after updating the test runner; this milestone adds no dependencies. The available Node 23 runtime ran the checks successfully but is outside Vitest’s declared engine range; `.nvmrc` selects the recommended Node 22 LTS for teammates.
+
+New checks exercise Yao’s command-session wrapper (all solutions, fail-fast sequencing, duplicate deliveries, stale turns, abort/reset/dispose, synchronous cancellation races, pause/resume and terminal outcomes), the shared request schema, Jeff’s camera/animation contract, fixed shelf cameras, camera-relative vertical aiming, and identical simulation outcomes across 60 Hz/irregular/large clock advances. Result-driven cancellation is checked during a large clock advance so accelerated presets cannot execute past an interruption.
 
 `npm run check` runs strict TypeScript checks and deterministic tests through the public controller facade. Coverage includes all three repair solutions, five-minute flooding, bounded towels/bucket, wrong rotations, tools, posture, reach, hands, blocked paths, patch order, seeded ambiguity, explicit qualifiers, clarification, reliable precise instructions at every stress band, phone placement/retrieval, reference frames, sequential work, cancellation, pause/resume, reset, stale requests, subscriber ownership and terminal events.
 
@@ -27,7 +29,7 @@ SMOKE_URL=http://127.0.0.1:4173 SMOKE_PRODUCTION=1 npm run smoke
 
 ## Environment limitations for this implementation run
 
-The automated Chrome launch was attempted but the execution sandbox terminated the browser with `SIGABRT` and reported an `EPERM` process error before a page could load. No screenshot or browser performance measurement was produced. Desktop Edge is not installed in this environment. Chrome/Edge interaction, screenshot review and measured frame performance are therefore **not verified here**; the scripts above are supplied for a browser-capable environment. No unsupported claim of desktop browser verification is implied by passing the simulation tests.
+The automated Chrome launch was attempted again for the integration milestone, but the execution sandbox terminated the browser with `SIGABRT` and reported an `EPERM` process error before a page could load. No screenshot or browser performance measurement was produced. Desktop Edge is not installed in this environment. Chrome/Edge interaction, screenshot review and measured frame performance are therefore **not verified here**; the scripts above are supplied for a browser-capable environment. No unsupported claim of desktop browser verification is implied by passing the simulation tests.
 
 ## Manual checks after browser access is available
 

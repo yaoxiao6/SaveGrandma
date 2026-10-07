@@ -1,3 +1,5 @@
+import { lensYaw, lookAngles, turnYaw } from './phone';
+import { isActionRequest } from './action-contract';
 import { distance, ids, normalize, OBJECTS, radians, TUNING } from './config';
 import type { Acceptance, Action, ActionRequest, Band, GameController, GameEvent, ItemId, ObjectId, Observation, ReasonCode, Result, Stage, Target, Vec2 } from './types';
 
@@ -13,43 +15,16 @@ export type WorldState = {
 };
 type Failure = { code: ReasonCode; message: string; candidates?: ObjectId[] };
 let runCounter = 0;
+// A page reload must not accidentally reuse a run ID still held by a voice service.
+const instanceId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const itemIds: ItemId[] = ['wrench', 'patch', 'clamp', 'towels', 'bucket'];
 const clone = <T,>(value: T): T => structuredClone(value);
 const failure = (code: ReasonCode, message: string): Failure => ({ code, message });
-const numberIn = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
-const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-
-// Runtime validation is intentional: network/LLM output is not protected by TS types.
-function validRequest(input: unknown): input is ActionRequest {
-  if (!isRecord(input) || typeof input.runId !== 'string' || !isRecord(input.action)) return false;
-  if (input.unresolved !== undefined && (!Array.isArray(input.unresolved) || !input.unresolved.every(x => typeof x === 'string'))) return false;
-  const a = input.action;
-  if (typeof a.type !== 'string' || !Object.hasOwn(TUNING.durations, a.type)) return false;
-  if (a.frame !== undefined && !['grandma', 'camera'].includes(String(a.frame))) return false;
-  if (['move_to', 'place_phone', 'grab', 'place', 'rotate', 'apply_patch', 'secure_patch'].includes(a.type)) {
-    if (!isRecord(a.target)) return false;
-    const t = a.target;
-    if (t.id !== undefined && !ids.includes(t.id as ObjectId)) return false;
-    if (t.description !== undefined && typeof t.description !== 'string') return false;
-    if (t.candidates !== undefined && (!Array.isArray(t.candidates) || !t.candidates.every(x => ids.includes(x)))) return false;
-    if (t.qualifiers !== undefined && (!isRecord(t.qualifiers) || Object.keys(t.qualifiers).some(k => k !== 'color') || (t.qualifiers.color !== undefined && typeof t.qualifiers.color !== 'string'))) return false;
-  }
-  switch (a.type) {
-    case 'move': return ['forward', 'backward', 'left', 'right'].includes(String(a.direction)) && numberIn(a.meters, 0.1, 5);
-    case 'look': return ['forward', 'backward', 'left', 'right', 'up', 'down'].includes(String(a.direction)) && (a.degrees === undefined || numberIn(a.degrees, 1, 180));
-    case 'turn': return ['left', 'right'].includes(String(a.direction)) && (a.degrees === undefined || numberIn(a.degrees, 1, 180));
-    case 'switch_camera': return a.mode === 'selfie' || a.mode === 'rear';
-    case 'rotate': return a.direction === undefined || a.direction === 'clockwise' || a.direction === 'counterclockwise';
-    case 'place': return itemIds.includes(a.item as ItemId);
-    case 'wait': return numberIn(a.seconds, 0.1, 600);
-    default: return true;
-  }
-}
-
 export class Simulation implements GameController {
   private state!: WorldState;
   private randomState = 1;
   private serial = 0;
+  private remainder = 0;
   private listeners = new Set<(event: GameEvent) => void>();
   private events: GameEvent[] = [];
   private delivering = false;
@@ -58,8 +33,9 @@ export class Simulation implements GameController {
 
   private initialize(seed: number) {
     this.randomState = seed >>> 0;
+    this.remainder = 0;
     this.state = {
-      runId: `run-${++runCounter}`, seed, stage: 'ready', elapsed: 0, water: 0, leakRate: TUNING.initialLeakPerSecond,
+      runId: `run-${instanceId}-${++runCounter}`, seed, stage: 'ready', elapsed: 0, water: 0, leakRate: TUNING.initialLeakPerSecond,
       grandma: { position: { x: 0, z: 0.9 }, yaw: 0, posture: 'standing', held: [] },
       phone: { mode: 'selfie', placement: 'hand', yaw: 0, pitch: 0, fixedYaw: 0 },
       items: Object.fromEntries(itemIds.map(id => [id, { position: { ...OBJECTS[id].position }, height: OBJECTS[id].height, location: 'world' }])) as WorldState['items'],
@@ -133,7 +109,7 @@ export class Simulation implements GameController {
   submitAction(request: ActionRequest): Acceptance {
     const actionId = `${this.state.runId}:action-${++this.serial}`;
     let error: Failure | undefined;
-    if (!validRequest(request)) error = failure('INVALID_REQUEST', 'Use one supported structured action with valid fields; broad goals need a specific next action.');
+    if (!isActionRequest(request)) error = failure('INVALID_REQUEST', 'Use one supported structured action with valid fields; broad goals need a specific next action.');
     else if (request.runId !== this.state.runId) error = failure('STALE_RUN', 'This request belongs to an earlier run. Read the current observation before submitting.');
     else if (this.state.stage !== 'running') error = failure('NOT_RUNNING', 'Start or resume the current session before sending actions.');
     else if (this.state.queue.length >= TUNING.queueLimit) error = failure('QUEUE_FULL', 'Wait for queued actions to complete or cancel them.');
@@ -184,10 +160,6 @@ export class Simulation implements GameController {
     return { ...failure('CLARIFICATION_NEEDED', 'There is more than one plausible target. Specify the object or color.'), candidates };
   }
 
-  private cameraYaw() {
-    const s = this.state;
-    return s.phone.placement === 'dry_spot' ? s.phone.fixedYaw + (s.phone.mode === 'selfie' ? 180 : 0) : s.grandma.yaw + s.phone.yaw + (s.phone.mode === 'selfie' ? 180 : 0);
-  }
   private blocked(p: Vec2) {
     const r = TUNING.room;
     return p.x < r.minX || p.x > r.maxX || p.z < r.minZ || p.z > r.maxZ || TUNING.obstacles.some(o => p.x > o.minX && p.x < o.maxX && p.z > o.minZ && p.z < o.maxZ);
@@ -211,6 +183,12 @@ export class Simulation implements GameController {
     }
     const freeHands = 2 - g.held.length - (s.phone.placement === 'hand' ? 1 : 0);
     switch (a.type) {
+      case 'switch_camera':
+        if (s.phone.placement === 'dry_spot') {
+          if (distance(g.position, OBJECTS.dry_spot.position) > TUNING.reach) return failure('OUT_OF_REACH', 'Move closer to the phone shelf to switch cameras.');
+          if (g.posture !== 'standing') return failure('WRONG_POSTURE', 'Stand up to reach the phone controls.');
+        }
+        break;
       case 'look':
         if (a.frame === 'camera' && s.phone.placement !== 'hand') return failure('PHONE_NOT_HELD', 'Retrieve the phone to aim its camera.');
         break;
@@ -273,7 +251,7 @@ export class Simulation implements GameController {
         const fraction = d ? Math.max(0, d - TUNING.approachDistance) / d : 0;
         to = { x: from.x + (p.x - from.x) * fraction, z: from.z + (p.z - from.z) * fraction };
       } else if (a.type === 'move') {
-        const yaw = (a.frame === 'camera' ? this.cameraYaw() : this.state.grandma.yaw) + { forward: 0, backward: 180, left: 90, right: -90 }[a.direction];
+        const yaw = (a.frame === 'camera' ? lensYaw(this.state) : this.state.grandma.yaw) + { forward: 0, backward: 180, left: 90, right: -90 }[a.direction];
         to = { x: from.x + Math.sin(radians(yaw)) * a.meters, z: from.z + Math.cos(radians(yaw)) * a.meters };
       }
       if (to) {
@@ -296,21 +274,8 @@ export class Simulation implements GameController {
     let message = `${a.type.replaceAll('_', ' ')} completed.`;
     let win = false;
     switch (a.type) {
-      case 'look': {
-        const degrees = a.degrees ?? 35;
-        if (a.direction === 'up' || a.direction === 'down') s.phone.pitch = Math.max(-65, Math.min(65, s.phone.pitch + (a.direction === 'up' ? degrees : -degrees)));
-        else {
-          const base = a.frame === 'camera' ? this.cameraYaw() : s.grandma.yaw;
-          const offset = { forward: 0, backward: 180, left: degrees, right: -degrees }[a.direction];
-          s.phone.yaw = normalize(base + offset - s.grandma.yaw - (a.frame === 'camera' && s.phone.mode === 'selfie' ? 180 : 0));
-          if (a.direction === 'forward') s.phone.pitch = 0;
-        }
-        break;
-      }
-      case 'turn': {
-        const base = a.frame === 'camera' ? this.cameraYaw() : s.grandma.yaw;
-        s.grandma.yaw = normalize(base + (a.direction === 'left' ? 1 : -1) * (a.degrees ?? 90)); s.phone.yaw = 0; break;
-      }
+      case 'look': Object.assign(s.phone, lookAngles(s, a)); break;
+      case 'turn': s.grandma.yaw = turnYaw(s, a); s.phone.yaw = 0; break;
       case 'switch_camera': s.phone.mode = a.mode; break;
       case 'place_phone':
         s.phone.placement = 'dry_spot';
@@ -348,11 +313,18 @@ export class Simulation implements GameController {
   /** Engine clock only; not part of the teammate-facing controller. Seconds of simulation time. */
   advance(seconds: number) {
     if (!Number.isFinite(seconds) || seconds <= 0 || this.state.stage !== 'running') return;
-    let remaining = seconds;
-    while (remaining > 1e-9 && this.state.stage === 'running') {
-      const dt = Math.min(TUNING.tickSeconds, remaining); remaining -= dt;
+    this.remainder += seconds;
+    const runId = this.state.runId;
+    while (this.remainder >= TUNING.tickSeconds - 1e-9 && this.state.stage === 'running' && this.state.runId === runId) {
+      const dt = TUNING.tickSeconds;
+      this.remainder = Math.max(0, this.remainder - dt);
       const s = this.state;
-      while (!s.active && s.queue.length) this.begin(s.queue.shift()!);
+      if (!s.active && s.queue.length) {
+        this.begin(s.queue.shift()!);
+        this.flush();
+        if (this.state !== s || s.stage !== 'running') break;
+      }
+      if (this.state !== s || s.stage !== 'running') break;
       s.elapsed += dt;
       let inflow = s.leakRate * dt;
       const caught = Math.min(s.bucketRemaining, inflow); s.bucketRemaining -= caught; inflow -= caught;
@@ -365,7 +337,10 @@ export class Simulation implements GameController {
         if (active.to) s.grandma.position = { x: active.from.x + (active.to.x - active.from.x) * progress, z: active.from.z + (active.to.z - active.from.z) * progress };
         if (active.elapsed >= active.duration - 1e-9) { s.active = null; this.finish(active); }
       }
+      // Let interruptions and result-driven sequences react before the next tick.
+      this.flush();
     }
+    if (this.state.runId !== runId || this.state.stage !== 'running') this.remainder = 0;
     const active = this.state.active;
     if (active) this.emit({ type: 'action_progress', runId: this.state.runId, actionId: active.id, action: active.request.action.type, progress: active.elapsed / active.duration });
     this.changed(); this.flush();

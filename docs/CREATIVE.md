@@ -1,5 +1,33 @@
 # Creative handoff
 
+**Owner: Jeff.** The game supplies stable render data and replacement slots. Jeff owns final models, materials, animations, sound, effects and styling.
+
+## Component slots now available
+
+Register React Three Fiber visual components in `src/creative/visuals.ts`:
+
+```ts
+import { GrandmaModel } from './GrandmaModel'; // Jeff supplies these components.
+import { BathroomEnvironment } from './BathroomEnvironment';
+import { ItemModel } from './ItemModel';
+
+export const SCENE_VISUALS: SceneVisuals = {
+  Grandma: GrandmaModel,
+  Environment: BathroomEnvironment,
+  Tool: ItemModel,
+};
+```
+
+The default registry is empty, so every slot retains its working placeholder. Register only finished components; asset loading and its error/Suspense handling belong inside those components. No unprovided model path is loaded automatically.
+
+- `Grandma({ frame })` renders in character-local coordinates. The game applies the outer feet-origin translation and yaw. Use `frame.character.bend`, `animation`, and `hands` to pose the rig and attach the phone/tools; a custom Grandma component owns its held-item visuals. Do not apply the outer transform a second time.
+- `Environment({ frame })` replaces the room shell and fixed fixture placeholders, including supply valve/joint, stream, repair overlay and mounted phone visual. Use `frame.anchors` and `frame.effects`. The game still renders loose portable items, deployed bucket/towels, the water plane, lights, and the phone camera. Do not duplicate those in the environment.
+- `Tool({ id })` renders an item-local visual; the game positions it on surfaces and in the primitive Grandma’s hands. A custom Grandma can reuse the same component for its own hand attachments.
+
+`getSceneFrame(world)` in `src/view/presentation.ts` is the pure render contract. `animation` supplies the requested clip name, action ID, target ID, normalized progress, duration, looping flag and whether the running session should advance it. `Relief`/`Flooded` are terminal cues; start a local one-shot visual on entering that cue, since simulation time stops at the outcome. Pause freezes active progress. Do not award repairs or consume tools from animation callbacks.
+
+The contract also supplies the exact phone position/aim target, item interaction anchors, water height/ratio, leak ratio, patch state, bucket fill and towel saturation. These fields are render data, not Yao’s conversational observation. Camera pose is now computed in this shared module, including continuous bend/turn/look motion and opposing lenses, rather than duplicated inside the scene component.
+
 All current meshes are authored procedural placeholders. No downloaded or generated assets are required to run. Replace the render layer in `src/view/Scene.tsx`; preserve simulation object IDs, interaction anchors and timings in `src/game/config.ts`.
 
 ## Coordinate and scale contract
@@ -47,6 +75,7 @@ These are names for the creative teammate to author, **not claims about an exist
 | `Bend_Down`, `Stand_Up` | posture actions, 1 s each |
 | `Pick_Up`, `Put_Down` | grab/place, 1.5 s each |
 | `Phone_Place`, `Phone_Retrieve` | 1.5 s each |
+| `Phone_Check` | switch-camera action, 0.6 s |
 | `Rotate_Valve`, `Tighten_Joint` | rotate target, 4 s |
 | `Apply_Patch` | 6 s |
 | `Secure_Clamp` | 5 s |

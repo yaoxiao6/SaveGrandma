@@ -1,5 +1,49 @@
 # Voice integration contract
 
+**Owner: Yao.** The game supplies action/state contracts; Yao owns speech, interpretation, dialogue, Fish integration and playback.
+
+## Recommended entry point: command sessions
+
+The app now exports `gameCommands`, a provider-independent wrapper around the same controller. It solves sequencing and async turn ownership without implementing any voice service:
+
+```ts
+import {
+  gameController as game,
+  gameCommands,
+  ACTION_REQUEST_SCHEMA,
+  type CommandStep,
+  type Observation,
+} from '../src/game';
+
+// Yao supplies this callback; no SDK is assumed by the game.
+async function handleSpeech(
+  interpret: (observation: Observation, signal: AbortSignal) => Promise<CommandStep[]>,
+) {
+  // Call at speech onset, not after the LLM response comes back.
+  const turn = gameCommands.beginTurn();
+  const steps = await interpret(game.getObservation(), turn.signal);
+  return gameCommands.submit(turn.token, steps);
+}
+
+// On stop/disconnect: also stop the adapter's current audio playback.
+gameCommands.interrupt();
+
+// Use this as an input-shape reference or adapt it to your provider's tool format.
+console.log(JSON.stringify(ACTION_REQUEST_SCHEMA));
+```
+
+Each step is `{ action, unresolved? }`, using the actions documented below. The turn token carries `runId` and `turnId`; keep it unchanged through your async pipeline. `beginTurn()` aborts the previous signal and clears game actions. Signals also abort on reset and terminal outcomes. Handle an aborted interpretation as an interruption, not a connection error; terminal narration can be started separately from the aborted gameplay turn.
+
+`submit()` validates the entire sequence before starting any step, then submits one action at a time. It stops on a failed prerequisite, clarification, cancellation, `LEAK_WORSENED` or terminal outcome. It does not synthesize missing steps. The promise resolves to `{ runId, turnId, status, code, results, skipped, stage }`. `skipped` counts steps never submitted; `results` contains received controller results. A win can finish before all supplied steps, returning `TERMINAL` with the remaining count skipped.
+
+Repeated delivery of an already-submitted live turn returns the original promise and never replays its actions; the first submitted payload wins. An older turn in the same run returns `STALE_TURN`, and an earlier run returns `STALE_RUN`. Run IDs also have a per-page-instance UUID so a reload cannot reuse a previous service request’s identifier. New submissions during pause are rejected, while a sequence already executing freezes and resumes with the game. If other code queues work between `beginTurn` and `submit`, the session rejects with `BUSY` instead of mixing instructions.
+
+Use the app singleton for one game. `createCommandSession(controller)` is available for tests or a different host; dispose custom instances when finished. Do not dispose the app singleton during transient adapter disconnects—use `interrupt()` so reconnecting can reuse it.
+
+`ACTION_REQUEST_SCHEMA` is ordinary JSON Schema, not an SDK-specific strict tool schema. The controller and session validate against the same definition with `isActionRequest`. Unknown fields and qualifiers are rejected instead of silently ignored. Optional fields remain optional: for example, omitting rotation direction produces a gameplay clarification. Providers with stricter schema restrictions can adapt the schema while preserving this contract. No parsing, provider credentials or network transport is supplied here.
+
+The original low-level controller below remains supported. Its raw queue intentionally does not stop automatically after errors; prefer `gameCommands` for spoken compound instructions.
+
 Import the app’s singleton, not a second simulation:
 
 ```ts
@@ -27,7 +71,7 @@ Only `getObservation()` and `GameEvent` should be passed into conversational con
 7. `reset({ seed: 7 })` cancels old work and creates a new `runId`, returning to ready. Discard old dialogue/audio and pending voice turns. Cancellation events retain the old run ID. Seed resets reproduce interpretation randomness.
 8. On `terminal`, stop accepting gameplay for that run and let the UI show the outcome. Reset is required for a new run. Unsubscribe on adapter disposal.
 
-Events are delivered synchronously after a controller mutation completes, including queue acceptance events before `submitAction` returns. Do not rely on registering a result listener after submission. Listener-triggered controller calls are supported; filter events by the captured run ID. Listener exceptions are isolated and reported to the console. Observations, requests, and emitted events are copied so consumers cannot mutate the simulation.
+Events are delivered synchronously after a controller mutation completes, including queue acceptance events before `submitAction` returns. Action results are flushed between fixed simulation ticks so listeners can cancel the next step even during a long clock advance. Do not rely on registering a result listener after submission. Listener-triggered controller calls are supported; filter events by the captured run ID. Listener exceptions are isolated and reported to the console. Observations, requests, and emitted events are copied so consumers cannot mutate the simulation.
 
 ## Actions
 
@@ -37,7 +81,7 @@ Events are delivered synchronously after a controller mutation completes, includ
 | `turn` | `direction: left/right`, optional `degrees` (1–180; default 90), optional `frame`; turns Grandma’s body |
 | `move` | `direction: forward/backward/left/right`, `meters: 0.1–5`, optional `frame`; requires standing and a clear path |
 | `move_to` | `target`; walks directly to within reach, faces the approach direction; blocked straight paths fail, no pathfinding |
-| `switch_camera` | `mode: selfie/rear` |
+| `switch_camera` | `mode: selfie/rear`; when placed, requires standing within reach of the phone shelf |
 | `place_phone` | `target: { id: 'dry_spot' }`; requires shelf reach and standing |
 | `retrieve_phone` | requires shelf reach, standing, a free hand |
 | `bend`, `stand` | changes posture; never implicit in other actions |
@@ -49,7 +93,7 @@ Events are delivered synchronously after a controller mutation completes, includ
 
 All directional actions default to `frame: 'grandma'`. At yaw 0 Grandma faces +Z; her left is +X. Camera-relative movement uses the active lens’s horizontal forward axis. The selfie lens points opposite the rear lens, so `move forward` in the selfie camera frame moves behind Grandma. `turn` with the camera frame turns Grandma to the lens heading plus the requested signed angle. A shelf-mounted camera’s frame stays fixed even as she turns or moves.
 
-Horizontal `look` in Grandma’s frame aims relative to her body; repeated `look left` is not cumulative. `look` in the camera frame changes the lens’s current heading. Up/down change pitch, capped at ±65°. Forward resets pitch. Camera-relative aiming requires the phone held; Grandma can still look around while it is placed. Switching lenses changes the view but never teleports the phone.
+Horizontal `look` in Grandma’s frame aims relative to her body; repeated `look left` is not cumulative. `look` in the camera frame changes the lens’s current heading. Up/down change pitch, capped at ±65°. Camera-relative up raises the active lens, including selfie; Grandma-relative up raises the phone’s rear direction, with the front lens pointing oppositely. Forward resets pitch. Camera-relative aiming requires the phone held; Grandma can still look around while it is placed. Switching lenses changes the view but never teleports the phone.
 
 ## Targets and ambiguity
 

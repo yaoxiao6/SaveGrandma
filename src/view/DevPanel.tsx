@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WorldState } from '../game/controller';
-import { gameController } from '../game/session';
+import { gameCommands, gameController } from '../game/session';
 import { OBJECTS, ids, TUNING } from '../game/config';
 import { PRESETS, runPreset } from '../game/presets';
 import type { Action, Direction, Frame, GameEvent, ItemId, ObjectId, Target } from '../game/types';
@@ -25,6 +25,7 @@ export default function DevPanel({ world, events, speed, setSpeed, clearEvents }
   const [unresolved, setUnresolved] = useState('');
   const [seed, setSeed] = useState(7);
   const [preset, setPreset] = useState('valve');
+  const [safeSequence, setSafeSequence] = useState(true);
   const [feedback, setFeedback] = useState('Send structured actions through the public controller.');
   const hasTarget = ['move_to', 'place_phone', 'grab', 'place', 'rotate', 'apply_patch', 'secure_patch'].includes(kind);
   const running = world.stage === 'running';
@@ -46,19 +47,34 @@ export default function DevPanel({ world, events, speed, setSpeed, clearEvents }
     setFeedback(`${result.code} · ${result.message}`);
   };
   const reset = () => { gameController.reset({ seed }); clearEvents(); setFeedback('Session reset. Start the call or run a preset.'); };
+  const playPreset = () => {
+    clearEvents();
+    if (!safeSequence) {
+      const results = runPreset(gameController, preset, seed);
+      setFeedback(`Queued ${results.filter(r => r.accepted).length} actions in a new run.`);
+      return;
+    }
+    gameController.reset({ seed }); gameController.start();
+    const turn = gameCommands.beginTurn();
+    setFeedback('Running through Yao’s command-session interface. Stops at the first issue.');
+    void gameCommands.submit(turn.token, PRESETS[preset].actions.map(action => ({ action }))).then(result => {
+      if (gameController.getObservation().runId === result.runId) setFeedback(`${result.code} · ${result.results.length} results, ${result.skipped} steps skipped.`);
+    });
+  };
   return <aside className="dev-panel" aria-label="Developer panel">
     <div className="panel-title"><div><span className="eyebrow">FOR THE TEAM</span><h2>Developer console</h2></div><span className="dev-badge">DEV</span></div>
     <div className="tabs" role="tablist" aria-label="Developer views">{(['actions', 'state', 'events'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}{t === 'events' && <span>{events.length}</span>}</button>)}</div>
     <div className="panel-body">
       <div className="session-row"><span><i className={`dot ${running ? 'live' : ''}`} />{world.stage.toUpperCase()}</span><span>{world.queue.length} QUEUED</span></div>
       {world.active && <div className="active-action"><span>{names[world.active.request.action.type]} <small>{Math.round(world.active.elapsed / world.active.duration * 100)}%</small></span><div className="progress"><i style={{ width: `${world.active.elapsed / world.active.duration * 100}%` }} /></div></div>}
-      <div className="session-buttons"><button onClick={() => world.stage === 'ready' ? gameController.start() : world.stage === 'paused' ? gameController.resume() : gameController.pause()} disabled={world.stage === 'won' || world.stage === 'lost'}>{running ? 'Pause' : world.stage === 'ready' ? 'Start' : 'Resume'}</button><button onClick={() => gameController.cancelActions()}>Cancel actions</button><button onClick={reset}>Reset</button></div>
+      <div className="session-buttons"><button onClick={() => world.stage === 'ready' ? gameController.start() : world.stage === 'paused' ? gameController.resume() : gameController.pause()} disabled={world.stage === 'won' || world.stage === 'lost'}>{running ? 'Pause' : world.stage === 'ready' ? 'Start' : 'Resume'}</button><button onClick={() => gameCommands.interrupt()}>Cancel actions</button><button onClick={reset}>Reset</button></div>
       {tab === 'actions' && <>
         <div className="section-label">01 <span>SCENARIO PRESETS</span></div>
         <label>Scripted scenario<select value={preset} onChange={e => setPreset(e.target.value)}>{Object.entries(PRESETS).map(([key, p]) => <option key={key} value={key}>{p.name}</option>)}</select></label>
         <p className="help-text">{PRESETS[preset].description}</p>
         <div className="two-fields"><label>Random seed<input type="number" value={seed} onChange={e => setSeed(Number(e.target.value))} /></label><label>Simulation speed<select value={speed} onChange={e => setSpeed(Number(e.target.value))}><option value={1}>1× · Real time</option><option value={3}>3×</option><option value={10}>10×</option></select></label></div>
-        <button className="preset-button" onClick={() => { clearEvents(); const results = runPreset(gameController, preset, seed); setFeedback(`Queued ${results.filter(r => r.accepted).length} actions in a new run.`); }}>Run preset <span>↗</span></button>
+        <label className="checkbox"><input type="checkbox" checked={safeSequence} onChange={e => setSafeSequence(e.target.checked)} /> Stop the sequence on the first issue</label>
+        <button className="preset-button" onClick={playPreset}>Run preset <span>↗</span></button>
         <div className="section-label">02 <span>INDIVIDUAL ACTION</span></div>
         <label>Action<select value={kind} onChange={e => setKind(e.target.value as Action['type'])}>{Object.entries(names).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
         {hasTarget && <><label>Target<select value={targetId} onChange={e => setTargetId(e.target.value as ObjectId)} disabled={ambiguous}>{ids.map(id => <option key={id} value={id}>{OBJECTS[id].name}</option>)}</select></label><label className="checkbox"><input type="checkbox" checked={ambiguous} onChange={e => setAmbiguous(e.target.checked)} /> Use an ambiguous description</label>{ambiguous && <div className="two-fields"><label>Description<input value={description} onChange={e => setDescription(e.target.value)} placeholder="fitting / tool" /></label><label>Color qualifier<input value={color} onChange={e => setColor(e.target.value)} placeholder="optional" /></label></div>}</>}

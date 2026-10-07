@@ -237,4 +237,24 @@ describe('queue, lifecycle and ownership', () => {
   it('all preset requests pass runtime schema checks', () => {
     const t = setup(); for (const key of Object.keys(PRESETS)) expect(runPreset(t.controller, key).every(r => r.accepted)).toBe(true);
   });
+  it('clock subdivisions do not change repair timing, water, or outcomes', () => {
+    const a = setup(), b = setup(), c = setup();
+    for (const t of [a, b, c]) runPreset(t.controller, 'patch');
+    a.sim.advance(90);
+    for (let i = 0; i < 5400; i++) b.sim.advance(1 / 60);
+    for (let i = 0; i < 900; i++) { c.sim.advance(0.017); c.sim.advance(0.083); }
+    for (const other of [b, c]) {
+      expect(other.sim.readState().stage).toBe('won');
+      expect(other.sim.readState().elapsed).toBeCloseTo(a.sim.readState().elapsed, 8);
+      expect(other.sim.readState().water).toBeCloseTo(a.sim.readState().water, 8);
+    }
+  });
+  it('a result listener can cancel the next queued action even during a large clock advance', () => {
+    const t = setup();
+    t.controller.subscribe(event => { if (event.type === 'action_result' && event.result.status === 'completed') t.controller.cancelActions(); });
+    t.send({ type: 'wait', seconds: 1 }); t.send({ type: 'move', direction: 'forward', meters: 1 });
+    t.sim.advance(10);
+    expect(t.sim.readState().grandma.position.z).toBe(0.9);
+    expect(t.results().map(r => r.code)).toEqual(['OK', 'CANCELLED']);
+  });
 });

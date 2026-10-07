@@ -34,15 +34,19 @@ The developer panel is a conditional development-only import. Production builds 
 
 ## Team handoff
 
+**Jeff owns creative assets and presentation. Yao owns voice AI.** The game layer owns simulation, action execution, phone behavior, and the integration contracts. [Team work areas and next integration steps](docs/TEAM.md).
+
 | Owner | Entry point |
 | --- | --- |
-| Voice | [Integration guide](docs/INTEGRATION.md), `src/game/index.ts`, `src/game/types.ts` |
-| Creative | [Creative handoff](docs/CREATIVE.md), `src/view/Scene.tsx` |
+| Yao · Voice AI | [Integration guide](docs/INTEGRATION.md), `src/game/index.ts`, `gameCommands`, `ACTION_REQUEST_SCHEMA` |
+| Jeff · Creative | [Creative handoff](docs/CREATIVE.md), `src/creative/visuals.ts`, `src/view/presentation.ts` |
 | Game simulation | `src/game/controller.ts`, `src/game/config.ts` |
 | Hackathon alignment | [Reviewed starter guidance](docs/HACKATHON.md) |
 | Validation | [Checks and remaining browser verification](docs/VALIDATION.md) |
 
 No voice SDK, microphone capture, natural-language parser, generated speech, voice clone, API credentials, external models, fonts, images, or sound assets are included. These are deliberately separate teammate responsibilities. Everything visible is procedural geometry and system typography, and the game runs without network calls after installation.
+
+The command-session bridge accepts the structured actions produced by Yao’s interpreter. It handles same-run interruptions, stale AI responses, duplicate delivery, and ordered sequences that stop at the first issue. Developer presets use this bridge by default; uncheck **Stop the sequence on the first issue** to inspect the raw controller queue. The simulation advances in fixed 50 ms steps, independent of browser frame rate.
 
 The custom React 19 + React Three Fiber 9 setup follows the [renderer’s compatibility guidance](https://r3f.docs.pmnd.rs/getting-started/installation). This is a standalone app, outside the starter repo’s `game-kit/` folder. See the hackathon notes for why the starter’s folder-specific JavaScript engine rules do not require a stack change here.
 # help-me-grandma
