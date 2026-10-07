@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { gameCommands, gameController, simulation } from './game/session';
 import Scene from './view/Scene';
 import StartScreen from './view/StartScreen';
-import Intro, { GREETING, RULES } from './view/Intro';
+import Intro, { GREETING } from './view/Intro';
+import Outro, { OUTRO_LINES } from './view/Outro';
+import { speak } from './voice/grandma-voice';
 import { EXAMPLES, parseInstruction } from './voice/text-commands';
 import { useVoice } from './voice/useVoice';
 import { useIntroMusic } from './view/intro-music';
@@ -22,7 +24,7 @@ export default function App() {
   // Yao's realtime voice agent. Connects when Grandma's greeting begins; typed text stays as a fallback.
   const voice = useVoice();
   useIntroMusic(started ? 'off' : 'title');
-  const { setMute, notify } = voice;
+  const { setMute } = voice;
   const say = (who: Line['who'], text: string) => setLines(old => [...old, line(who, text)].slice(-40));
   useEffect(() => gameController.subscribe(event => {
     if (event.type === 'state_changed') setWorld(simulation.readState());
@@ -58,10 +60,14 @@ export default function App() {
   useEffect(() => { if (voice.speechEnded && playersTurn) turns.endPlayerTurn(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [voice.speechEnded]);
   // The mic is open only during the player's turn, so input and output never overlap.
   useEffect(() => { setMute(!playersTurn); }, [playersTurn, setMute]);
+  // Win and loss each have one fixed line from Grandma, spoken live when connected, synthesized otherwise.
   useEffect(() => {
-    if (world.stage === 'won') notify('[The leak has stopped completely! React with huge relief and thank your grandchild.]');
-    if (world.stage === 'lost') notify('[The bathroom has flooded. React, sad but brave, and say goodbye.]');
-  }, [world.stage, notify]);
+    if (!terminal) return;
+    const text = OUTRO_LINES[world.stage as 'won' | 'lost'];
+    if (voice.status === 'connected') voice.sayLine(text); else void speak(text);
+    say('grandma', text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terminal]);
   const voiceLabel = voice.status === 'connected' ? (playersTurn ? 'Listening… tap when you are done' : 'Tap to respond to Grandma') : voice.status === 'microphone' ? 'Allow the microphone…' : voice.status === 'connecting' ? 'Connecting voice…' : voice.status === 'error' ? 'Voice unavailable, tap to retry' : 'Tap to turn on voice';
   // Tapping the mic: connect voice if needed, otherwise take your turn (mic opens) or finish it.
   const onMic = () => {
@@ -104,10 +110,9 @@ export default function App() {
           <span className="turn-label">{turns.turn === 'player' ? 'Your turn · tell Grandma what to do' : voice.speaking ? 'Grandma is talking…' : world.active ? 'Grandma is on it…' : 'Grandma’s turn'}</span>
           {turns.turn === 'player' && <><span className="turn-count">{Math.ceil(turns.remaining)}</span><div className="turn-bar"><i style={{ width: `${turns.remaining / PLAYER_TURN_SECONDS * 100}%` }} /></div></>}
         </div>}
-        {intro === 'done' && <details className="objectives" open><summary>Objectives</summary><ul>{RULES.map(rule => <li key={rule}>{rule}</li>)}</ul></details>}
         {intro === 'playing' && <Intro voice={voice} onGreeting={live => { if (!live) say('grandma', GREETING); }} onDone={() => gameController.start()} onFinished={() => setIntro('done')} />}
         {world.stage === 'paused' && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">TAKE A BREATH</span><h2>Call paused.</h2><p>The water and Grandma’s actions are paused.</p><button className="primary" onClick={() => gameController.resume()}>Resume call ↗</button></div></div>}
-        {terminal && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">{world.stage === 'won' ? 'CRISIS AVERTED' : 'LET’S TRY THAT AGAIN'}</span><h2>{world.stage === 'won' ? 'You saved the day.' : 'A little too much water.'}</h2><p>{world.stage === 'won' ? 'The leak has stopped. Grandma can put the kettle on.' : 'The bathroom flooded before the leak was stopped.'}</p><button className="primary" onClick={restart}>Start a new call ↗</button></div></div>}
+        {terminal && <Outro outcome={world.stage as 'won' | 'lost'} onRestart={restart} />}
 
         <div className="call-bottom">
           <div className="transcript" ref={transcript} role="log" aria-live="polite" aria-label="Call transcript">

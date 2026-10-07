@@ -21,10 +21,10 @@ function Block({ position, size, color, rotation }: { position: V3; size: V3; co
 }
 
 function HeldItem({ id }: { id: ItemId }) {
-  switch (id) {
+  switch (id as string) {
     case 'wrench': return <group rotation={[Math.PI / 2, 0, 0]}><Block position={[0, 0, 0]} size={[0.06, 0.3, 0.04]} color="#9aa7aa" /><Block position={[0.06, 0.16, 0]} size={[0.08, 0.12, 0.05]} color="#9aa7aa" /><Block position={[-0.06, 0.16, 0]} size={[0.08, 0.12, 0.05]} color="#9aa7aa" /></group>;
-    case 'patch': return <Block position={[0, 0, 0]} size={[0.24, 0.04, 0.16]} color="#303d3a" />;
-    case 'clamp': return <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.1, 0.025, 8, 16]} /><meshStandardMaterial color="#a1aeb0" metalness={0.5} roughness={0.4} /></mesh>;
+    case 'screwdriver': return <group rotation={[Math.PI / 2, 0, 0]}><Block position={[0, 0.07, 0]} size={[0.035, 0.14, 0.035]} color="#e8b64a" /><Block position={[0, -0.07, 0]} size={[0.012, 0.16, 0.012]} color="#9aa7aa" /></group>;
+    case 'hammer': return <group rotation={[Math.PI / 2, 0, 0]}><Block position={[0, 0, 0]} size={[0.03, 0.3, 0.03]} color="#a97845" /><Block position={[0, 0.15, 0]} size={[0.14, 0.06, 0.06]} color="#6b6f73" /></group>;
     case 'towels': return <group>{[0, 1, 2].map(i => <Block key={i} position={[0, i * 0.055, 0]} size={[0.4, 0.055, 0.26]} color={i % 2 ? '#f1d5b9' : '#db967c'} />)}</group>;
     case 'bucket': return <mesh><cylinderGeometry args={[0.2, 0.15, 0.34, 16]} /><meshStandardMaterial color="#73a9bc" /></mesh>;
   }

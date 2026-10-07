@@ -1,0 +1,13 @@
+/** End-of-call screens. Loss blacks out instantly; a win fades to black. Grandma's line is spoken by the voice layer. */
+export const OUTRO_LINES = {
+  won: 'Sweetie, you saved me!',
+  lost: 'Oh sweetie, please try again!',
+} as const;
+
+export default function Outro({ outcome, onRestart }: { outcome: 'won' | 'lost'; onRestart: () => void }) {
+  return <div className={`intro-black outro ${outcome}`} role="dialog" aria-modal="true" aria-labelledby="outro-title">
+    <div className="caller-avatar" aria-hidden="true"><img src="/images/grandma-profile.png" alt="" width={1254} height={1254} /></div>
+    <h2 id="outro-title">{OUTRO_LINES[outcome]}</h2>
+    <button type="button" className="start-button" autoFocus onClick={onRestart}>{outcome === 'won' ? 'Play again' : 'Try again'}</button>
+  </div>;
+}

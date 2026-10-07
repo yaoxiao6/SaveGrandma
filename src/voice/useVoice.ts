@@ -143,6 +143,12 @@ export function useVoice() {
 
   /** Tell Grandma about something that happened outside a tool call, e.g. the leak stopping. */
   const notify = useCallback((text: string) => { session.current?.sendMessage(text); }, []);
+  /** Make Grandma say one exact line (win/lose screens). */
+  const sayLine = useCallback((text: string) => {
+    const s = session.current; if (!s) return;
+    s.interrupt();
+    s.transport.sendEvent({ type: 'response.create', response: { instructions: `Say exactly this and nothing else, in character: "${text}"` } });
+  }, []);
 
   // ElevenLabs (or fallback) playback drives the same speaking indicator as OpenAI audio would.
   useEffect(() => onSpeaking(setSpeaking), []);
@@ -151,5 +157,5 @@ export function useVoice() {
   /** End of the player's turn: Grandma answers whatever was said and acts on it. */
   const respond = useCallback(() => { session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
 
-  return { status, error, grandmaSaid, youSaid, speaking, speechEnded, muted, connect, disconnect, setMute, notify, greet, respond, hush };
+  return { status, error, grandmaSaid, youSaid, speaking, speechEnded, muted, connect, disconnect, setMute, notify, sayLine, greet, respond, hush };
 }
