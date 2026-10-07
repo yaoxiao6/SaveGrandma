@@ -11,6 +11,8 @@ npm ci
 npm run dev
 ```
 
+Voice: copy `.env.example` to `.env.local` and set `OPENAI_API_KEY`, then restart the dev server. Answering the call connects Grandma (`gpt-realtime-2.1-mini` over WebRTC via the OpenAI Agents SDK); allow microphone access and talk to her. The key stays in the Vite server, which mints short-lived client secrets at `POST /api/realtime-token`. Voice code lives in `src/voice/`.
+
 Open the printed localhost URL. Answer the call, then use the developer console. The quickest complete demo is **01 · Close the valve → Run preset**. **03 · Patch + clamp** demonstrates placing the phone down while Grandma works in its fixed view. Set simulation speed to 3× or 10× to inspect long scripts. Presets reset and start a fresh seeded run.
 
 - `npm test` — deterministic simulation and controller tests.
