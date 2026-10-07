@@ -118,5 +118,5 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="scene-fallback">The 3D camera needs WebGL. Enable hardware acceleration and reload. The simulation and developer controls are still available.</div> : this.props.children; }
 }
 export default function Scene({ world }: { world: WorldState }) {
-  return <SceneBoundary><Canvas shadows dpr={[1, 1.5]} camera={{ fov: 72, near: 0.035, far: 30 }} gl={{ antialias: true }} fallback={<div className="scene-fallback">WebGL unavailable. The simulation remains available in the developer panel.</div>}><Bathroom world={world} /></Canvas></SceneBoundary>;
+  return <SceneBoundary><Canvas shadows dpr={[1, 1.5]} camera={{ fov: 88, near: 0.035, far: 30 }} gl={{ antialias: true }} fallback={<div className="scene-fallback">WebGL unavailable. The simulation remains available in the developer panel.</div>}><Bathroom world={world} /></Canvas></SceneBoundary>;
 }

@@ -37,7 +37,8 @@ export class Simulation implements GameController {
     this.state = {
       runId: `run-${instanceId}-${++runCounter}`, seed, stage: 'ready', elapsed: 0, water: 0, leakRate: TUNING.initialLeakPerSecond,
       grandma: { position: { x: 0, z: 0.9 }, yaw: 0, posture: 'standing', held: [] },
-      phone: { mode: 'selfie', placement: 'hand', yaw: 0, pitch: 0, fixedYaw: 0 },
+      // The call opens on the rear camera so the caller sees the flooding room, not Grandma's face.
+      phone: { mode: 'rear', placement: 'hand', yaw: 0, pitch: 0, fixedYaw: 0 },
       items: Object.fromEntries(itemIds.map(id => [id, { position: { ...OBJECTS[id].position }, height: OBJECTS[id].height, location: 'world' }])) as WorldState['items'],
       patchApplied: false, towelRemaining: 0, bucketRemaining: 0, towelUsed: false, bucketUsed: false, active: null, queue: [],
     };

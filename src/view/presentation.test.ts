@@ -13,8 +13,8 @@ function setup() {
 
 describe('Jeff’s presentation contract and phone camera', () => {
   it('front and rear lenses share a position and point in opposite directions', () => {
-    const t = setup(); const selfie = t.frame().phone;
-    t.send({ type: 'switch_camera', mode: 'rear' }); t.simulation.advance(1); const rear = t.frame().phone;
+    const t = setup(); const rear = t.frame().phone;
+    t.send({ type: 'switch_camera', mode: 'selfie' }); t.simulation.advance(1); const selfie = t.frame().phone;
     expect(selfie.position).toEqual(rear.position);
     for (let i = 0; i < 3; i++) expect(selfie.target[i] - selfie.position[i]).toBeCloseTo(-(rear.target[i] - rear.position[i]));
   });
@@ -42,8 +42,8 @@ describe('Jeff’s presentation contract and phone camera', () => {
     const t = setup();
     t.send({ type: 'move_to', target: { id: 'dry_spot' } }); t.send({ type: 'place_phone', target: { id: 'dry_spot' } });
     t.send({ type: 'move_to', target: { id: 'pipe_joint' } }); t.simulation.advance(20);
-    t.send({ type: 'switch_camera', mode: 'rear' }); t.simulation.advance(1);
-    expect(t.frame().phone.mode).toBe('selfie');
+    t.send({ type: 'switch_camera', mode: 'selfie' }); t.simulation.advance(1);
+    expect(t.frame().phone.mode).toBe('rear');
   });
   it('interpolates turning and ends with the same heading used for camera-frame actions', () => {
     const t = setup(); t.send({ type: 'turn', direction: 'left', degrees: 90 }); t.simulation.advance(0.35);

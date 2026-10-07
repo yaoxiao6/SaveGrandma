@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
-import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from 'three';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { CanvasTexture, InstancedMesh, Object3D, RepeatWrapping, SRGBColorSpace } from 'three';
 import { OBJECTS } from '../game/config';
 import type { SceneFrame } from '../view/presentation';
 
@@ -42,6 +43,55 @@ function Cyl({ position, radius, height, color, rotation, metal = 0, rough = 0.6
   return <mesh position={position} rotation={rotation} castShadow receiveShadow><cylinderGeometry args={[top ?? radius, radius, height, segments]} /><meshStandardMaterial color={color} metalness={metal} roughness={rough} /></mesh>;
 }
 
+/**
+ * Falling water droplets. Each drop leaves `origin` with its own small sideways push, falls
+ * under gravity and restarts when it reaches `floorY`. Purely cosmetic; `rate` scales how many
+ * drops are in flight so the pipe spray grows with the simulation's leak ratio.
+ */
+function Drops({ origin, floorY, count, rate = 1, spread = 0.08, push = [0, 0], size = 0.014, gravity = 4.5 }: { origin: V3; floorY: number; count: number; rate?: number; spread?: number; push?: [number, number]; size?: number; gravity?: number }) {
+  const mesh = useRef<InstancedMesh>(null);
+  const dummy = useMemo(() => new Object3D(), []);
+  const seeds = useMemo(() => Array.from({ length: count }, (_, i) => ({ phase: (i * 0.618) % 1, dx: ((i * 7) % 11 / 11 - 0.5) * spread, dz: ((i * 5) % 13 / 13 - 0.5) * spread, speed: 0.85 + (i * 3 % 7) / 14 })), [count, spread]);
+  const fallTime = Math.sqrt(2 * (origin[1] - floorY) / gravity);
+  useFrame(({ clock }) => {
+    const m = mesh.current; if (!m) return;
+    const t = clock.elapsedTime;
+    const active = Math.max(0, Math.min(count, Math.round(count * rate)));
+    seeds.forEach((seed, i) => {
+      if (i >= active) { dummy.position.set(0, -10, 0); dummy.scale.setScalar(0.0001); }
+      else {
+        const cycle = fallTime / seed.speed;
+        const age = ((t / cycle + seed.phase) % 1) * cycle;
+        const y = origin[1] - 0.5 * gravity * age * age;
+        dummy.position.set(origin[0] + seed.dx + push[0] * age, Math.max(floorY, y), origin[2] + seed.dz + push[1] * age);
+        dummy.scale.set(1, 1.6, 1);
+      }
+      dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix);
+    });
+    m.instanceMatrix.needsUpdate = true;
+  });
+  return <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
+    <sphereGeometry args={[size, 6, 5]} />
+    <meshStandardMaterial color="#bfe6f5" transparent opacity={0.85} roughness={0.1} />
+  </instancedMesh>;
+}
+
+/** Expanding ripple rings where water lands. */
+function Ripples({ position, radius = 0.12, count = 3 }: { position: V3; radius?: number; count?: number }) {
+  const rings = useRef<(Object3D | null)[]>([]);
+  useFrame(({ clock }) => {
+    rings.current.forEach((ring, i) => {
+      if (!ring) return;
+      const phase = (clock.elapsedTime * 0.9 + i / count) % 1;
+      ring.scale.setScalar(0.2 + phase * 1.2);
+      (ring as unknown as { material: { opacity: number } }).material.opacity = 0.45 * (1 - phase);
+    });
+  });
+  return <group position={position} rotation={[-Math.PI / 2, 0, 0]}>
+    {Array.from({ length: count }, (_, i) => <mesh key={i} ref={el => { rings.current[i] = el; }}><ringGeometry args={[radius * 0.8, radius, 24]} /><meshBasicMaterial color="#e8f7ff" transparent opacity={0.3} depthWrite={false} /></mesh>)}
+  </group>;
+}
+
 /** One tiled wall: blue wainscot below, white tiles above, a pale trim between. */
 function Wall({ position, rotation, width }: { position: V3; rotation: V3; width: number }) {
   const lower = useTiles(C.blueTile, C.grout, width / TILE, WAINSCOT / TILE);
@@ -78,7 +128,13 @@ function Bathtub() {
     <Cyl position={[-2.9, 1.5, 0.6]} radius={0.02} height={1.9} color={C.chrome} metal={0.9} rough={0.25} />
     <Cyl position={[-2.75, 2.42, 0.6]} radius={0.018} height={0.35} color={C.chrome} rotation={[0, 0, Math.PI / 2]} metal={0.9} rough={0.25} />
     <Cyl position={[-2.6, 2.37, 0.6]} radius={0.11} top={0.05} height={0.07} color={C.chrome} metal={0.9} rough={0.25} />
-    <mesh position={[-2.6, 1.45, 0.6]}><cylinderGeometry args={[0.2, 0.05, 1.8, 10, 1, true]} /><meshStandardMaterial color="#cfe9f7" transparent opacity={0.28} depthWrite={false} /></mesh>
+    {/* The shower head never quite shut off: a steady stream and drips into the overflowing tub */}
+    <mesh position={[-2.6, 1.47, 0.6]}><cylinderGeometry args={[0.012, 0.05, 1.8, 8, 1, true]} /><meshStandardMaterial color="#cfe9f7" transparent opacity={0.45} depthWrite={false} /></mesh>
+    <Drops origin={[-2.6, 2.33, 0.6]} floorY={0.58} count={26} spread={0.16} size={0.012} />
+    <Ripples position={[-2.6, 0.585, 0.6]} radius={0.16} />
+    {/* Water sheeting over the tub rim onto the floor */}
+    <Box position={[-2.28, 0.3, 1.25]} size={[0.02, 0.56, 1.6]} color="#9fd4ee" rough={0.1} />
+    <Drops origin={[-2.27, 0.58, 1.25]} floorY={0.01} count={18} spread={1.5} size={0.01} gravity={5} />
     {/* Corner shelf with bottles */}
     <Box position={[-2.8, 1.75, 1.0]} size={[0.36, 0.025, 0.24]} color={C.chrome} metal={0.7} rough={0.3} />
     <Cyl position={[-2.85, 1.86, 0.95]} radius={0.035} height={0.2} color="#3b9ad8" rough={0.4} />
@@ -142,8 +198,12 @@ function Vanity({ frame }: { frame: SceneFrame }) {
     {/* Leaking joint; darkens when the rubber patch is wrapped on */}
     <Box position={[joint[0], 0.48, 4.69]} size={[0.2, 0.18, 0.17]} color={frame.effects.patchApplied ? '#3e504a' : '#d1ad6b'} metal={frame.effects.patchApplied ? 0 : 0.5} rough={frame.effects.patchApplied ? 1 : 0.4} />
     {frame.effects.leakRatio > 0 && <>
+      {/* Spray bursting out of the joint toward the room, plus a running stream down to the puddle */}
       <mesh position={[joint[0], 0.24, 4.64]}><cylinderGeometry args={[0.012, 0.08 * frame.effects.leakRatio, 0.48, 8]} /><meshStandardMaterial color="#8ac9d6" transparent opacity={0.7} depthWrite={false} /></mesh>
+      <Drops origin={[joint[0], 0.5, 4.6]} floorY={0.01} count={40} rate={Math.min(1, frame.effects.leakRatio)} spread={0.12} push={[-0.35, -1.1]} size={0.016} gravity={4} />
+      <Drops origin={[joint[0], 0.5, 4.6]} floorY={0.01} count={24} rate={Math.min(1, frame.effects.leakRatio - 0.5)} spread={0.1} push={[0.4, -0.7]} size={0.014} gravity={3.5} />
       <mesh position={[joint[0], 0.008, 4.55]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.28 + 0.1 * frame.effects.leakRatio, 20]} /><meshStandardMaterial color="#8ac9d6" transparent opacity={0.45} depthWrite={false} /></mesh>
+      <Ripples position={[joint[0] - 0.15, 0.012, 4.2]} radius={0.14} />
     </>}
   </group>;
 }

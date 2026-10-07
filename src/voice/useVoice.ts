@@ -69,7 +69,7 @@ export function useVoice() {
       model: REALTIME_MODEL,
       config: {
         audio: {
-          input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' }, turnDetection: { type: 'semantic_vad', eagerness: 'high' } },
+          input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' }, turnDetection: { type: 'semantic_vad', eagerness: 'high', createResponse: false, interruptResponse: false } },
           output: { voice: GRANDMA_VOICE },
         },
       },
@@ -92,8 +92,6 @@ export function useVoice() {
       console.info('[voice] connected');
       if (session.current !== s) return;
       setStatus('connected');
-      // Grandma speaks first; her instructions say how to open the call.
-      s.transport.sendEvent({ type: 'response.create' });
     } catch (e) {
       console.error('[voice] connect failed', e);
       releaseMicrophone();
@@ -104,10 +102,16 @@ export function useVoice() {
 
   const setMute = useCallback((value: boolean) => { session.current?.mute(value); setMuted(value); }, []);
 
+  /** Grandma speaks first; the intro calls this once the phone has stopped ringing. Her instructions say how to open the call. */
+  const greet = useCallback(() => { session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
+
   /** Tell Grandma about something that happened outside a tool call, e.g. the leak stopping. */
   const notify = useCallback((text: string) => { session.current?.sendMessage(text); }, []);
 
   useEffect(() => () => { session.current?.close(); session.current = null; releaseMicrophone(); }, []);
 
-  return { status, error, grandmaSaid, youSaid, speaking, muted, connect, disconnect, setMute, notify };
+  /** End of the player's turn: Grandma answers whatever was said and acts on it. */
+  const respond = greet;
+
+  return { status, error, grandmaSaid, youSaid, speaking, muted, connect, disconnect, setMute, notify, greet, respond };
 }

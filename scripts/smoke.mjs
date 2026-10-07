@@ -10,7 +10,8 @@ const browser = await chromium.launch({ channel, headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, deviceScaleFactor: 1 });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
-page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+// Voice needs a microphone and OPENAI_API_KEY, neither of which the smoke environment has.
+page.on('console', m => { if (m.type() === 'error' && !m.text().startsWith('[voice]')) errors.push(m.text()); });
 page.on('requestfailed', r => errors.push(`${r.url()} ${r.failure()?.errorText}`));
 const checks = [];
 const RULE = 'Stop the water before the room floods.';
@@ -22,16 +23,21 @@ try {
   await page.locator('canvas').waitFor();
   await page.screenshot({ path: `artifacts/${channel}-title.png` });
   await page.getByRole('button', { name: 'Start the game' }).click();
-  await connected(); // the cinematic intro rings, greets and shows the rules before the call goes live
+  await page.getByRole('dialog', { name: 'Incoming call from Granny' }).waitFor();
+  await page.screenshot({ path: `artifacts/${channel}-incoming.png` });
+  await page.getByRole('button', { name: 'Answer the call' }).click();
+  await connected(); // Granny greets and the rules show before the call goes live
   await page.getByText('Objectives', { exact: true }).waitFor();
   assert.equal(await page.locator('canvas').count(), 1);
   const phone = await page.getByTestId('phone').boundingBox();
   assert.ok(Math.abs(phone.width / phone.height - 9 / 16) < 0.01, `Phone frame is not 9:16 (${phone.width}x${phone.height})`);
-  await page.screenshot({ path: `artifacts/${channel}-selfie.png` });
-  checks.push('Title, start lifecycle, WebGL canvas, selfie camera, 9:16 frame');
-  await tell('switch to the rear camera');
-  await page.getByText('switch camera completed.', { exact: false }).waitFor();
   await page.screenshot({ path: `artifacts/${channel}-rear.png` });
+  checks.push('Title, start lifecycle, WebGL canvas, rear camera on the flooding room, 9:16 frame');
+  await tell('switch to the front camera');
+  await page.getByText('switch camera completed.', { exact: false }).waitFor();
+  await page.screenshot({ path: `artifacts/${channel}-selfie.png` });
+  await tell('switch to the rear camera');
+  await page.getByText('switch camera completed.', { exact: false }).nth(1).waitFor();
   checks.push('Typed instruction switches camera');
   await tell('go to the wrench, pick up the wrench, walk to the pipe, bend down, tighten the joint');
   await page.getByRole('heading', { name: 'You saved the day.' }).waitFor({ timeout: 60000 });

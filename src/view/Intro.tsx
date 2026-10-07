@@ -1,50 +1,100 @@
-import { useEffect, useState } from 'react';
-import { ringPhone } from './intro-audio';
+import { useEffect, useRef, useState } from 'react';
+import { speak } from '../voice/grandma-voice';
+import type { VoiceStatus } from '../voice/useVoice';
 
+/** Scripted fallback used only when the realtime voice agent is unavailable. */
 export const GREETING = 'Honey, I’m trapped in the bathroom and it’s flooding in here! Can you help me get out of this pickle?';
 export const RULES = [
   'Grandma only does what you tell her.',
   'Stop the water before the room floods.',
-  'Say “rear camera” to see the room.',
+  'Say “front camera” to see Grandma, “rear camera” for the room.',
   'Be specific: “grab the wrench”, “turn the valve clockwise”.',
 ];
-const GREETING_SECONDS = 6;
+/** Served from public/audio; loops until the call is answered. */
+const RINGTONE = '/audio/iphone-ringtone.mp3';
+const FALLBACK_GREETING_SECONDS = 6;
+const MAX_CONNECT_WAIT_SECONDS = 12;
+const MAX_GREETING_SECONDS = 25;
 const RULES_SECONDS = 3;
 const FADE_SECONDS = 0.7;
 
 type Phase = 'ringing' | 'greeting' | 'rules' | 'fade-out' | 'fade-in';
+export type IntroVoice = { status: VoiceStatus; speaking: boolean; grandmaSaid: string; greet: () => void };
 
 export function RulesList({ className }: { className: string }) {
   return <div className={className}><h3>How to save Grandma</h3><ul>{RULES.map(rule => <li key={rule}>{rule}</li>)}</ul></div>;
 }
 
-/** Cinematic opening: black screen and ringing, Grandma's greeting, the rules, then a fade into the live call. */
-export default function Intro({ spoken, onGreeting, onDone, onFinished }: { spoken?: string; onGreeting: () => void; onDone: () => void; onFinished: () => void }) {
+/**
+ * Cinematic opening: Granny's incoming call rings until the player answers, then the screen
+ * turns on and Grandma greets the caller live. The rules follow once she finishes, then a fade
+ * into the running game. If voice never connects, the scripted greeting is spoken instead.
+ */
+export default function Intro({ voice, onGreeting, onDone, onFinished }: { voice: IntroVoice; onGreeting: (live: boolean) => void; onDone: () => void; onFinished: () => void }) {
   const [phase, setPhase] = useState<Phase>('ringing');
-  useEffect(() => {
-    const ring = ringPhone();
-    const timers: number[] = [];
-    const at = (seconds: number, fn: () => void) => timers.push(window.setTimeout(fn, seconds * 1000));
-    let t = ring.duration + 0.4;
-    at(t, () => { setPhase('greeting'); onGreeting(); });
-    t += GREETING_SECONDS;
-    at(t, () => setPhase('rules'));
-    t += RULES_SECONDS;
-    at(t, () => setPhase('fade-out'));
-    t += FADE_SECONDS;
-    at(t, () => { setPhase('fade-in'); onDone(); });
-    t += FADE_SECONDS + 0.2;
-    at(t, onFinished);
-    return () => { ring.stop(); timers.forEach(clearTimeout); };
-    // The sequence runs exactly once per mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [answered, setAnswered] = useState(false);
+  const [gaveUpWaiting, setGaveUpWaiting] = useState(false);
+  const live = useRef(false);
+  const hasSpoken = useRef(false);
 
-  if (phase === 'ringing') return <div className="intro-black" aria-label="Phone ringing" />;
+  // The ringtone loops until the player picks up. Mounting follows the Start click, so playback is allowed.
+  useEffect(() => {
+    if (answered) return;
+    const ring = new Audio(RINGTONE);
+    ring.loop = true;
+    ring.volume = 0.8;
+    void ring.play().catch(() => {});
+    return () => { ring.pause(); ring.src = ''; };
+  }, [answered]);
+  useEffect(() => {
+    if (!answered) return;
+    const giveUp = window.setTimeout(() => setGaveUpWaiting(true), MAX_CONNECT_WAIT_SECONDS * 1000);
+    return () => clearTimeout(giveUp);
+  }, [answered]);
+
+  // Screen turns on once the call is answered and the voice connection has settled one way or the other.
+  useEffect(() => {
+    if (phase !== 'ringing' || !answered) return;
+    const settled = voice.status === 'connected' || voice.status === 'error' || voice.status === 'idle';
+    if (!settled && !gaveUpWaiting) return;
+    live.current = voice.status === 'connected';
+    setPhase('greeting');
+    onGreeting(live.current);
+    if (live.current) voice.greet(); else void speak(GREETING);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, answered, gaveUpWaiting, voice.status]);
+
+  // The greeting lasts as long as Grandma talks (live) or a fixed beat (fallback).
+  useEffect(() => {
+    if (phase !== 'greeting') return;
+    if (!live.current) { const t = window.setTimeout(() => setPhase('rules'), FALLBACK_GREETING_SECONDS * 1000); return () => clearTimeout(t); }
+    if (voice.speaking) hasSpoken.current = true;
+    const delay = hasSpoken.current && !voice.speaking ? 0.8 : MAX_GREETING_SECONDS;
+    const t = window.setTimeout(() => setPhase('rules'), delay * 1000);
+    return () => clearTimeout(t);
+  }, [phase, voice.speaking]);
+
+  useEffect(() => {
+    if (phase === 'rules') { const t = window.setTimeout(() => setPhase('fade-out'), RULES_SECONDS * 1000); return () => clearTimeout(t); }
+    if (phase === 'fade-out') { const t = window.setTimeout(() => { setPhase('fade-in'); onDone(); }, FADE_SECONDS * 1000); return () => clearTimeout(t); }
+    if (phase === 'fade-in') { const t = window.setTimeout(onFinished, (FADE_SECONDS + 0.2) * 1000); return () => clearTimeout(t); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  if (phase === 'ringing') return <div className="intro-black incoming-call" role="dialog" aria-label="Incoming call from Granny">
+    <div className="caller-avatar" aria-hidden="true" />
+    <h2>Granny</h2>
+    <p>{answered ? 'Connecting…' : 'incoming call'}</p>
+    <button type="button" className="answer-button" onClick={() => setAnswered(true)} disabled={answered} aria-label="Answer the call">
+      <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1L6.6 10.8z" /></svg>
+      <span>Answer</span>
+    </button>
+  </div>;
   if (phase === 'fade-out') return <div className="intro-black fade-out" />;
   if (phase === 'fade-in') return <div className="intro-black fade-in" />;
+  const text = live.current ? voice.grandmaSaid : GREETING;
   return <div className="intro-layer screen-on">
-    {phase === 'greeting' && <div className="speech-bubble"><p>{spoken || GREETING}</p></div>}
+    {phase === 'greeting' && text && <div className="speech-bubble"><p>{text}</p></div>}
     {phase === 'rules' && <div className="rules-backdrop"><RulesList className="rules rules-center" /></div>}
   </div>;
 }
