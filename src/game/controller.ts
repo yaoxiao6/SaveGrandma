@@ -1,0 +1,384 @@
+import { distance, ids, normalize, OBJECTS, radians, TUNING } from './config';
+import type { Acceptance, Action, ActionRequest, Band, GameController, GameEvent, ItemId, ObjectId, Observation, ReasonCode, Result, Stage, Target, Vec2 } from './types';
+
+type Queued = { id: string; request: ActionRequest };
+type Active = Queued & { target?: ObjectId; elapsed: number; duration: number; from: Vec2; to?: Vec2 };
+export type WorldState = {
+  runId: string; seed: number; stage: Stage; elapsed: number; water: number; leakRate: number;
+  grandma: { position: Vec2; yaw: number; posture: 'standing' | 'bent'; held: ItemId[] };
+  phone: { mode: 'selfie' | 'rear'; placement: 'hand' | 'dry_spot'; yaw: number; pitch: number; fixedYaw: number };
+  items: Record<ItemId, { position: Vec2; height: number; location: 'world' | 'held' | 'used' }>;
+  patchApplied: boolean; towelRemaining: number; bucketRemaining: number; towelUsed: boolean; bucketUsed: boolean;
+  active: Active | null; queue: Queued[];
+};
+type Failure = { code: ReasonCode; message: string; candidates?: ObjectId[] };
+let runCounter = 0;
+const itemIds: ItemId[] = ['wrench', 'patch', 'clamp', 'towels', 'bucket'];
+const clone = <T,>(value: T): T => structuredClone(value);
+const failure = (code: ReasonCode, message: string): Failure => ({ code, message });
+const numberIn = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+// Runtime validation is intentional: network/LLM output is not protected by TS types.
+function validRequest(input: unknown): input is ActionRequest {
+  if (!isRecord(input) || typeof input.runId !== 'string' || !isRecord(input.action)) return false;
+  if (input.unresolved !== undefined && (!Array.isArray(input.unresolved) || !input.unresolved.every(x => typeof x === 'string'))) return false;
+  const a = input.action;
+  if (typeof a.type !== 'string' || !Object.hasOwn(TUNING.durations, a.type)) return false;
+  if (a.frame !== undefined && !['grandma', 'camera'].includes(String(a.frame))) return false;
+  if (['move_to', 'place_phone', 'grab', 'place', 'rotate', 'apply_patch', 'secure_patch'].includes(a.type)) {
+    if (!isRecord(a.target)) return false;
+    const t = a.target;
+    if (t.id !== undefined && !ids.includes(t.id as ObjectId)) return false;
+    if (t.description !== undefined && typeof t.description !== 'string') return false;
+    if (t.candidates !== undefined && (!Array.isArray(t.candidates) || !t.candidates.every(x => ids.includes(x)))) return false;
+    if (t.qualifiers !== undefined && (!isRecord(t.qualifiers) || Object.keys(t.qualifiers).some(k => k !== 'color') || (t.qualifiers.color !== undefined && typeof t.qualifiers.color !== 'string'))) return false;
+  }
+  switch (a.type) {
+    case 'move': return ['forward', 'backward', 'left', 'right'].includes(String(a.direction)) && numberIn(a.meters, 0.1, 5);
+    case 'look': return ['forward', 'backward', 'left', 'right', 'up', 'down'].includes(String(a.direction)) && (a.degrees === undefined || numberIn(a.degrees, 1, 180));
+    case 'turn': return ['left', 'right'].includes(String(a.direction)) && (a.degrees === undefined || numberIn(a.degrees, 1, 180));
+    case 'switch_camera': return a.mode === 'selfie' || a.mode === 'rear';
+    case 'rotate': return a.direction === undefined || a.direction === 'clockwise' || a.direction === 'counterclockwise';
+    case 'place': return itemIds.includes(a.item as ItemId);
+    case 'wait': return numberIn(a.seconds, 0.1, 600);
+    default: return true;
+  }
+}
+
+export class Simulation implements GameController {
+  private state!: WorldState;
+  private randomState = 1;
+  private serial = 0;
+  private listeners = new Set<(event: GameEvent) => void>();
+  private events: GameEvent[] = [];
+  private delivering = false;
+
+  constructor(seed = 7) { this.initialize(seed); }
+
+  private initialize(seed: number) {
+    this.randomState = seed >>> 0;
+    this.state = {
+      runId: `run-${++runCounter}`, seed, stage: 'ready', elapsed: 0, water: 0, leakRate: TUNING.initialLeakPerSecond,
+      grandma: { position: { x: 0, z: 0.9 }, yaw: 0, posture: 'standing', held: [] },
+      phone: { mode: 'selfie', placement: 'hand', yaw: 0, pitch: 0, fixedYaw: 0 },
+      items: Object.fromEntries(itemIds.map(id => [id, { position: { ...OBJECTS[id].position }, height: OBJECTS[id].height, location: 'world' }])) as WorldState['items'],
+      patchApplied: false, towelRemaining: 0, bucketRemaining: 0, towelUsed: false, bucketUsed: false, active: null, queue: [],
+    };
+  }
+
+  private random() {
+    this.randomState = (this.randomState + 0x6D2B79F5) >>> 0;
+    let t = this.randomState;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+
+  private emit(event: GameEvent) { this.events.push(event); }
+  // Deliver only after a mutation completes. Listener-triggered actions are safe.
+  private flush() {
+    if (this.delivering) return;
+    this.delivering = true;
+    try {
+      while (this.events.length) {
+        const event = this.events.shift()!;
+        for (const listener of [...this.listeners]) {
+          try { listener(clone(event)); } catch (error) { console.error('Game subscriber failed', error); }
+        }
+      }
+    } finally { this.delivering = false; }
+  }
+  private changed() { this.emit({ type: 'state_changed', runId: this.state.runId, observation: this.getObservation() }); }
+  private band(): Band {
+    const ratio = this.state.water / TUNING.floodThreshold;
+    return ratio >= TUNING.stressHigh ? 'high' : ratio >= TUNING.stressMedium ? 'medium' : 'low';
+  }
+  private position(id: ObjectId) { return itemIds.includes(id as ItemId) ? this.state.items[id as ItemId].position : OBJECTS[id].position; }
+  private height(id: ObjectId) { return itemIds.includes(id as ItemId) ? this.state.items[id as ItemId].height : OBJECTS[id].height; }
+  private available(id: ObjectId) { return !itemIds.includes(id as ItemId) || this.state.items[id as ItemId].location === 'world'; }
+
+  getObservation(): Observation {
+    const s = this.state;
+    const surroundings = ids.filter(id => this.available(id)).map(id => {
+      const p = this.position(id);
+      const d = distance(s.grandma.position, p);
+      const angle = Math.atan2(p.x - s.grandma.position.x, p.z - s.grandma.position.z) * 180 / Math.PI;
+      // Grandma's perception, independent of which phone camera is selected.
+      const visible = Math.abs(normalize(angle - s.grandma.yaw - s.phone.yaw)) <= 70 || d < 0.6;
+      return { id, name: OBJECTS[id].name, color: OBJECTS[id].color, distance: Math.round(d * 10) / 10, reachable: d <= TUNING.reach, visible };
+    }).filter(o => o.visible);
+    return clone({
+      runId: s.runId, stage: s.stage, elapsedSeconds: s.elapsed,
+      grandma: { position: s.grandma.position, facingDegrees: s.grandma.yaw, posture: s.grandma.posture, heldItems: s.grandma.held },
+      phone: { mode: s.phone.mode, placement: s.phone.placement }, surroundings,
+      waterBand: this.band(), stressBand: this.band(), leak: s.leakRate > 0 ? 'flowing' : 'stopped',
+      currentAction: s.active ? { actionId: s.active.id, type: s.active.request.action.type, progress: s.active.elapsed / s.active.duration } : null,
+      queuedActions: s.queue.length,
+    });
+  }
+
+  /** Rendering/developer diagnostics only. Never send this to a conversational model. */
+  readState(): WorldState { return clone(this.state); }
+  subscribe(listener: (event: GameEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  start() { if (this.state.stage === 'ready') { this.state.stage = 'running'; this.changed(); this.flush(); } }
+  pause() { if (this.state.stage === 'running') { this.state.stage = 'paused'; this.changed(); this.flush(); } }
+  resume() { if (this.state.stage === 'paused') { this.state.stage = 'running'; this.changed(); this.flush(); } }
+  reset(options?: { seed?: number }) {
+    this.cancelInternal();
+    this.initialize(Number.isFinite(options?.seed) ? options!.seed! : this.state.seed);
+    this.changed(); this.flush();
+  }
+
+  submitAction(request: ActionRequest): Acceptance {
+    const actionId = `${this.state.runId}:action-${++this.serial}`;
+    let error: Failure | undefined;
+    if (!validRequest(request)) error = failure('INVALID_REQUEST', 'Use one supported structured action with valid fields; broad goals need a specific next action.');
+    else if (request.runId !== this.state.runId) error = failure('STALE_RUN', 'This request belongs to an earlier run. Read the current observation before submitting.');
+    else if (this.state.stage !== 'running') error = failure('NOT_RUNNING', 'Start or resume the current session before sending actions.');
+    else if (this.state.queue.length >= TUNING.queueLimit) error = failure('QUEUE_FULL', 'Wait for queued actions to complete or cancel them.');
+    if (!error) {
+      this.state.queue.push({ id: actionId, request: clone(request) });
+      this.emit({ type: 'action_queued', runId: this.state.runId, actionId, action: clone(request.action) });
+      this.changed();
+    }
+    const result = { accepted: !error, actionId, runId: this.state.runId, code: error?.code ?? 'OK', message: error?.message ?? 'Queued; prerequisites will be checked when the action starts.' };
+    this.flush();
+    return result;
+  }
+
+  private result(q: Queued, code: ReasonCode, message: string, targetId?: ObjectId, candidates?: ObjectId[]) {
+    const status: Result['status'] = code === 'CLARIFICATION_NEEDED' ? 'clarification_needed' : code === 'CANCELLED' ? 'cancelled' : code === 'OK' || code === 'LEAK_WORSENED' ? 'completed' : 'failed';
+    this.emit({ type: 'action_result', runId: q.request.runId, result: { actionId: q.id, runId: q.request.runId, status, code, message, targetId, candidates } });
+  }
+  private cancelInternal() {
+    const interrupted = [ ...(this.state.active ? [this.state.active] : []), ...this.state.queue ];
+    this.state.active = null; this.state.queue = [];
+    for (const q of interrupted) this.result(q, 'CANCELLED', 'Stopped at the current safe point. Finished actions and distance already walked are preserved.');
+  }
+  cancelActions() { this.cancelInternal(); this.changed(); this.flush(); }
+
+  private resolve(q: Queued, target: Target): { id: ObjectId } | Failure {
+    if (target.id) {
+      if (target.qualifiers?.color && OBJECTS[target.id].color !== target.qualifiers.color.toLowerCase()) return failure('CLARIFICATION_NEEDED', 'The target identifier and color disagree. Which should I use?');
+      return { id: target.id };
+    }
+    const perceived = this.getObservation().surroundings.map(o => o.id);
+    let candidates = target.candidates ? [...new Set(target.candidates)] : ids.filter(id => {
+      const label = target.description?.trim().toLowerCase();
+      return label && (OBJECTS[id].aliases.includes(label) || OBJECTS[id].name.toLowerCase() === label);
+    });
+    candidates = candidates.filter(id => perceived.includes(id) && this.available(id));
+    const action = q.request.action;
+    if (action.type === 'rotate') candidates = candidates.filter(id => id === 'supply_valve' || id === 'pipe_joint');
+    if (action.type === 'grab') candidates = candidates.filter(id => OBJECTS[id].portable);
+    if (target.qualifiers?.color) candidates = candidates.filter(id => OBJECTS[id].color === target.qualifiers!.color!.toLowerCase());
+    if (!candidates.length) return failure('CLARIFICATION_NEEDED', 'I cannot identify that target here. Specify a visible object or its identifier.');
+    if (candidates.length === 1) return { id: candidates[0] };
+    candidates.sort((a, b) => distance(this.state.grandma.position, this.position(a)) - distance(this.state.grandma.position, this.position(b)));
+    if (this.random() < TUNING.mistakes[this.band()]) {
+      const selectedTarget = candidates[1 + Math.floor(this.random() * (candidates.length - 1))];
+      this.emit({ type: 'misunderstanding', runId: this.state.runId, actionId: q.id, selectedTarget, alternatives: candidates, stressBand: this.band() });
+      return { id: selectedTarget };
+    }
+    return { ...failure('CLARIFICATION_NEEDED', 'There is more than one plausible target. Specify the object or color.'), candidates };
+  }
+
+  private cameraYaw() {
+    const s = this.state;
+    return s.phone.placement === 'dry_spot' ? s.phone.fixedYaw + (s.phone.mode === 'selfie' ? 180 : 0) : s.grandma.yaw + s.phone.yaw + (s.phone.mode === 'selfie' ? 180 : 0);
+  }
+  private blocked(p: Vec2) {
+    const r = TUNING.room;
+    return p.x < r.minX || p.x > r.maxX || p.z < r.minZ || p.z > r.maxZ || TUNING.obstacles.some(o => p.x > o.minX && p.x < o.maxX && p.z > o.minZ && p.z < o.maxZ);
+  }
+  private pathClear(from: Vec2, to: Vec2) {
+    const steps = Math.ceil(distance(from, to) / 0.08);
+    for (let i = 1; i <= steps; i++) if (this.blocked({ x: from.x + (to.x - from.x) * i / steps, z: from.z + (to.z - from.z) * i / steps })) return false;
+    return true;
+  }
+  private check(a: Action, target?: ObjectId): Failure | undefined {
+    const s = this.state;
+    const g = s.grandma;
+    if (a.type === 'move' || a.type === 'move_to') {
+      if (g.posture !== 'standing') return failure('WRONG_POSTURE', 'Stand up before walking.');
+      if (target && !this.available(target)) return failure('INVALID_TARGET', 'That object is already held or has been used.');
+    }
+    if (target && !['move_to', 'look'].includes(a.type)) {
+      if (distance(g.position, this.position(target)) > TUNING.reach) return failure('OUT_OF_REACH', `Move closer to ${OBJECTS[target].name.toLowerCase()} first.`);
+      if (this.height(target) < 0.6 && g.posture !== 'bent') return failure('WRONG_POSTURE', 'Bend down to reach this low object.');
+      if (this.height(target) >= 0.6 && g.posture !== 'standing') return failure('WRONG_POSTURE', 'Stand up to reach this object.');
+    }
+    const freeHands = 2 - g.held.length - (s.phone.placement === 'hand' ? 1 : 0);
+    switch (a.type) {
+      case 'look':
+        if (a.frame === 'camera' && s.phone.placement !== 'hand') return failure('PHONE_NOT_HELD', 'Retrieve the phone to aim its camera.');
+        break;
+      case 'place_phone':
+        if (target !== 'dry_spot') return failure('INVALID_TARGET', 'Use the dry phone shelf.');
+        if (s.phone.placement !== 'hand') return failure('ALREADY_DONE', 'The phone is already on the shelf.');
+        break;
+      case 'retrieve_phone':
+        if (s.phone.placement === 'hand') return failure('ALREADY_DONE', 'The phone is already in my hand.');
+        if (distance(g.position, OBJECTS.dry_spot.position) > TUNING.reach) return failure('OUT_OF_REACH', 'Move closer to the phone shelf first.');
+        if (g.posture !== 'standing') return failure('WRONG_POSTURE', 'Stand up to retrieve the phone.');
+        if (freeHands < 1) return failure('HANDS_FULL', 'Put down an item to make room for the phone.');
+        break;
+      case 'grab':
+        if (!target || !OBJECTS[target].portable) return failure('INVALID_TARGET', 'That object cannot be picked up.');
+        if (!this.available(target)) return failure('ALREADY_DONE', 'That object has already been picked up or used.');
+        if (freeHands < 1) return failure('HANDS_FULL', 'Put down a held item or place the phone on its shelf first.');
+        break;
+      case 'place':
+        if (!g.held.includes(a.item)) return failure('MISSING_TOOL', `Pick up the ${a.item} first.`);
+        if (target !== 'dry_spot' && target !== 'puddle') return failure('INVALID_TARGET', 'Place items on the dry shelf or at the puddle.');
+        if ((a.item === 'bucket' && s.bucketUsed) || (a.item === 'towels' && s.towelUsed)) return failure('ALREADY_DONE', 'This mitigation is already used.');
+        break;
+      case 'rotate':
+        if (target !== 'supply_valve' && target !== 'pipe_joint') return failure('INVALID_TARGET', 'Only a pipe fitting can be rotated.');
+        if (target === 'pipe_joint' && !g.held.includes('wrench')) return failure('MISSING_TOOL', 'Pick up the wrench before turning the brass joint.');
+        if (target === 'supply_valve' && freeHands < 1) return failure('HANDS_FULL', 'Free a hand before turning the valve.');
+        break;
+      case 'apply_patch': case 'secure_patch': {
+        if (target !== 'pipe_joint') return failure('INVALID_TARGET', 'Work on the leaking pipe joint.');
+        if (s.phone.placement === 'hand') return failure('PHONE_MUST_BE_PLACED', 'Place the phone on the dry shelf; this task needs both hands.');
+        const tool = a.type === 'apply_patch' ? 'patch' : 'clamp';
+        if (!g.held.includes(tool)) return failure('MISSING_TOOL', `Pick up the ${tool} first.`);
+        if (g.held.length > 1) return failure('HANDS_FULL', 'Put down the other item so one hand can steady the pipe.');
+        if (a.type === 'apply_patch' && s.patchApplied) return failure('ALREADY_DONE', 'The patch is already wrapped around the pipe.');
+        if (a.type === 'secure_patch' && !s.patchApplied) return failure('PATCH_REQUIRED', 'Apply the rubber patch before securing the clamp.');
+        break;
+      }
+    }
+  }
+
+  private begin(q: Queued) {
+    const a = q.request.action;
+    let target: ObjectId | undefined;
+    let error: Failure | undefined;
+    if (q.request.unresolved?.some(detail => detail !== 'target')) error = failure('CLARIFICATION_NEEDED', `Clarify: ${q.request.unresolved.filter(x => x !== 'target').join(', ')}.`);
+    else if (a.type === 'rotate' && !a.direction) error = failure('CLARIFICATION_NEEDED', 'Which direction: clockwise or counterclockwise?');
+    else if ('target' in a) {
+      const resolved = this.resolve(q, a.target);
+      if ('id' in resolved) target = resolved.id; else error = resolved;
+    } else if (q.request.unresolved?.length) error = failure('CLARIFICATION_NEEDED', 'Specify the unresolved target.');
+    if (!error) error = this.check(a, target);
+    let duration: number = TUNING.durations[a.type];
+    const from = { ...this.state.grandma.position };
+    let to: Vec2 | undefined;
+    if (!error && (a.type === 'move' || a.type === 'move_to')) {
+      if (a.type === 'move_to' && target) {
+        const p = this.position(target);
+        const d = distance(from, p);
+        const fraction = d ? Math.max(0, d - TUNING.approachDistance) / d : 0;
+        to = { x: from.x + (p.x - from.x) * fraction, z: from.z + (p.z - from.z) * fraction };
+      } else if (a.type === 'move') {
+        const yaw = (a.frame === 'camera' ? this.cameraYaw() : this.state.grandma.yaw) + { forward: 0, backward: 180, left: 90, right: -90 }[a.direction];
+        to = { x: from.x + Math.sin(radians(yaw)) * a.meters, z: from.z + Math.cos(radians(yaw)) * a.meters };
+      }
+      if (to) {
+        if (!this.pathClear(from, to)) error = failure('BLOCKED', 'That path meets a wall or the toilet. Choose a shorter step or another direction.');
+        duration = Math.max(0.2, distance(from, to) / TUNING.moveSpeed);
+      }
+    }
+    if (a.type === 'wait') duration = a.seconds;
+    if (error) { this.result(q, error.code, error.message, target, error.candidates); return; }
+    this.state.active = { ...q, target, elapsed: 0, duration, from, to };
+    if (a.type === 'move_to' && to && distance(from, to) > 0.01) this.state.grandma.yaw = Math.atan2(to.x - from.x, to.z - from.z) * 180 / Math.PI;
+    this.emit({ type: 'action_progress', runId: this.state.runId, actionId: q.id, action: a.type, progress: 0 });
+  }
+
+  private consume(item: ItemId) { this.state.grandma.held = this.state.grandma.held.filter(id => id !== item); this.state.items[item].location = 'used'; }
+  private finish(active: Active) {
+    const s = this.state;
+    const a = active.request.action;
+    let code: ReasonCode = 'OK';
+    let message = `${a.type.replaceAll('_', ' ')} completed.`;
+    let win = false;
+    switch (a.type) {
+      case 'look': {
+        const degrees = a.degrees ?? 35;
+        if (a.direction === 'up' || a.direction === 'down') s.phone.pitch = Math.max(-65, Math.min(65, s.phone.pitch + (a.direction === 'up' ? degrees : -degrees)));
+        else {
+          const base = a.frame === 'camera' ? this.cameraYaw() : s.grandma.yaw;
+          const offset = { forward: 0, backward: 180, left: degrees, right: -degrees }[a.direction];
+          s.phone.yaw = normalize(base + offset - s.grandma.yaw - (a.frame === 'camera' && s.phone.mode === 'selfie' ? 180 : 0));
+          if (a.direction === 'forward') s.phone.pitch = 0;
+        }
+        break;
+      }
+      case 'turn': {
+        const base = a.frame === 'camera' ? this.cameraYaw() : s.grandma.yaw;
+        s.grandma.yaw = normalize(base + (a.direction === 'left' ? 1 : -1) * (a.degrees ?? 90)); s.phone.yaw = 0; break;
+      }
+      case 'switch_camera': s.phone.mode = a.mode; break;
+      case 'place_phone':
+        s.phone.placement = 'dry_spot';
+        s.phone.fixedYaw = Math.atan2(OBJECTS.pipe_joint.position.x - OBJECTS.dry_spot.position.x, OBJECTS.pipe_joint.position.z - OBJECTS.dry_spot.position.z) * 180 / Math.PI;
+        break;
+      case 'retrieve_phone': s.phone.placement = 'hand'; s.phone.yaw = 0; s.phone.pitch = 0; break;
+      case 'bend': s.grandma.posture = 'bent'; break;
+      case 'stand': s.grandma.posture = 'standing'; break;
+      case 'grab': {
+        const item = active.target as ItemId; s.grandma.held.push(item); s.items[item].location = 'held'; break;
+      }
+      case 'place':
+        s.grandma.held = s.grandma.held.filter(id => id !== a.item);
+        s.items[a.item] = { position: { ...this.position(active.target!) }, height: this.height(active.target!), location: 'world' };
+        if (active.target === 'puddle' && a.item === 'towels') { this.consume('towels'); s.towelUsed = true; s.towelRemaining = TUNING.towelCapacity; message = 'Towels are soaking up water. They will saturate.'; }
+        if (active.target === 'puddle' && a.item === 'bucket') { this.consume('bucket'); s.bucketUsed = true; s.bucketRemaining = TUNING.bucketCapacity; message = 'The bucket is catching water. It will fill up.'; }
+        break;
+      case 'rotate':
+        if (a.direction === 'clockwise') { s.leakRate = 0; win = true; message = active.target === 'supply_valve' ? 'The supply valve is closed. The water has stopped.' : 'The joint is tightened. The water has stopped.'; }
+        else { s.leakRate = Math.min(TUNING.initialLeakPerSecond * TUNING.maxLeakMultiplier, s.leakRate * TUNING.wrongRotationMultiplier); code = 'LEAK_WORSENED'; message = 'That loosened the fitting. Water is flowing faster; turn clockwise to tighten it.'; }
+        break;
+      case 'apply_patch': this.consume('patch'); s.patchApplied = true; message = 'The patch is wrapped around the joint; it still needs a clamp.'; break;
+      case 'secure_patch': this.consume('clamp'); s.leakRate = 0; win = true; message = 'The clamp holds the patch securely. The water has stopped.'; break;
+    }
+    this.result(active, code, message, active.target);
+    if (win) this.terminal('won', message);
+  }
+  private terminal(outcome: 'won' | 'lost', message: string) {
+    this.state.stage = outcome;
+    // The action completing a win was already removed. Flooding interrupts active work.
+    this.cancelInternal();
+    this.emit({ type: 'terminal', runId: this.state.runId, outcome, message });
+  }
+
+  /** Engine clock only; not part of the teammate-facing controller. Seconds of simulation time. */
+  advance(seconds: number) {
+    if (!Number.isFinite(seconds) || seconds <= 0 || this.state.stage !== 'running') return;
+    let remaining = seconds;
+    while (remaining > 1e-9 && this.state.stage === 'running') {
+      const dt = Math.min(TUNING.tickSeconds, remaining); remaining -= dt;
+      const s = this.state;
+      while (!s.active && s.queue.length) this.begin(s.queue.shift()!);
+      s.elapsed += dt;
+      let inflow = s.leakRate * dt;
+      const caught = Math.min(s.bucketRemaining, inflow); s.bucketRemaining -= caught; inflow -= caught;
+      s.water += inflow;
+      const absorbed = Math.min(s.towelRemaining, s.water); s.towelRemaining -= absorbed; s.water -= absorbed;
+      if (s.water >= TUNING.floodThreshold - 1e-8) { s.water = TUNING.floodThreshold; this.terminal('lost', 'The bathroom has flooded. Reset to try again.'); break; }
+      if (s.active) {
+        const active = s.active; active.elapsed = Math.min(active.duration, active.elapsed + dt);
+        const progress = active.elapsed / active.duration;
+        if (active.to) s.grandma.position = { x: active.from.x + (active.to.x - active.from.x) * progress, z: active.from.z + (active.to.z - active.from.z) * progress };
+        if (active.elapsed >= active.duration - 1e-9) { s.active = null; this.finish(active); }
+      }
+    }
+    const active = this.state.active;
+    if (active) this.emit({ type: 'action_progress', runId: this.state.runId, actionId: active.id, action: active.request.action.type, progress: active.elapsed / active.duration });
+    this.changed(); this.flush();
+  }
+}
+
+/** A restricted facade prevents accidental state leaks into the voice integration. */
+export function createGame(seed = 7) {
+  const simulation = new Simulation(seed);
+  const controller: GameController = Object.freeze({
+    getObservation: () => simulation.getObservation(), submitAction: (request: ActionRequest) => simulation.submitAction(request),
+    cancelActions: () => simulation.cancelActions(), subscribe: (listener: (event: GameEvent) => void) => simulation.subscribe(listener),
+    start: () => simulation.start(), pause: () => simulation.pause(), resume: () => simulation.resume(), reset: (options?: { seed?: number }) => simulation.reset(options),
+  });
+  return { controller, simulation };
+}
