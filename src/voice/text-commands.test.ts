@@ -12,17 +12,18 @@ describe('typed instruction placeholder', () => {
   it('maps phrasings to structured actions', () => {
     expect(actions('switch to the rear camera')).toEqual([{ type: 'switch_camera', mode: 'rear' }]);
     expect(actions('show me your face')).toEqual([{ type: 'switch_camera', mode: 'selfie' }]);
-    expect(actions('go to the red valve')).toEqual([{ type: 'move_to', target: { id: 'supply_valve' } }]);
-    expect(actions('turn the valve clockwise')).toEqual([{ type: 'rotate', target: { id: 'supply_valve' }, direction: 'clockwise' }]);
-    expect(actions('turn the valve')).toEqual([{ type: 'rotate', target: { id: 'supply_valve' }, direction: undefined }]);
-    expect(actions('loosen the joint')).toEqual([{ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'counterclockwise' }]);
-    expect(actions('tighten the joint')).toEqual([{ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }]);
+    expect(actions('go to the toolboxes')).toEqual([{ type: 'move_to', target: { id: 'blue_toolbox' } }]);
+    expect(actions('open the red toolbox')).toEqual([{ type: 'open', target: { id: 'red_toolbox' } }]);
+    expect(actions('open the toolbox')).toEqual([{ type: 'open', target: { candidates: ['red_toolbox', 'blue_toolbox', 'green_toolbox'] } }]);
+    expect(actions('turn the pipe clockwise')).toEqual([{ type: 'move_to', target: { id: 'pipe_joint' } }, { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }]);
+    expect(actions('turn the pipe')).toEqual([{ type: 'move_to', target: { id: 'pipe_joint' } }, { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: undefined }]);
+    expect(actions('loosen the joint')).toEqual([{ type: 'move_to', target: { id: 'pipe_joint' } }, { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'counterclockwise' }]);
+    expect(actions('tighten the joint')).toEqual([{ type: 'move_to', target: { id: 'pipe_joint' } }, { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }]);
     expect(actions('pick up the wrench')).toEqual([{ type: 'grab', target: { id: 'wrench' } }]);
     expect(actions('put the phone on the shelf')).toEqual([{ type: 'place_phone', target: { id: 'dry_spot' } }]);
     expect(actions('grab the phone')).toEqual([{ type: 'retrieve_phone' }]);
     expect(actions('put the towels on the puddle')).toEqual([{ type: 'place', item: 'towels', target: { id: 'puddle' } }]);
-    expect(actions('apply the patch')).toEqual([{ type: 'apply_patch', target: { id: 'pipe_joint' } }]);
-    expect(actions('secure the clamp')).toEqual([{ type: 'secure_patch', target: { id: 'pipe_joint' } }]);
+    expect(actions('grab the hammer')).toEqual([{ type: 'grab', target: { id: 'hammer' } }]);
     expect(actions('walk forward 2 meters')).toEqual([{ type: 'move', direction: 'forward', meters: 2 }]);
     expect(actions('look up')).toEqual([{ type: 'look', direction: 'up' }]);
     expect(actions('turn around')).toEqual([{ type: 'turn', direction: 'left', degrees: 180 }]);
@@ -39,7 +40,7 @@ describe('typed instruction placeholder', () => {
     const session = createCommandSession(controller);
     controller.start();
     const turn = session.beginTurn();
-    const parsed = parseInstruction('switch to the rear camera, go to the wrench, pick up the wrench, walk to the pipe, bend down, tighten the joint');
+    const parsed = parseInstruction('switch to the rear camera, go to the toolboxes, open the red toolbox, open the blue toolbox, open the green toolbox, pick up the wrench, walk to the pipe, bend down, turn the pipe counterclockwise');
     expect(parsed.ok).toBe(true);
     const pending = session.submit(turn.token, parsed.ok ? parsed.steps : []);
     simulation.advance(40);

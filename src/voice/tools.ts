@@ -21,6 +21,17 @@ const target = (thing: string, color?: string | null): Target => ({
   ...(color ? { qualifiers: { color: color.toLowerCase() } } : {}),
 });
 
+/** Run actions in order; stop at the first that does not complete and report that result. */
+async function runSequence(actions: Action[]): Promise<string> {
+  let last = '';
+  for (const action of actions) {
+    last = await runAction(action);
+    const { status } = JSON.parse(last) as { status: string };
+    if (status !== 'completed') return last;
+  }
+  return last;
+}
+
 /** Submit one action and resolve once the game reports its result. */
 function runAction(action: Action): Promise<string> {
   const before = game.getObservation();
@@ -50,9 +61,9 @@ function runAction(action: Action): Promise<string> {
   });
 }
 
-const thing = z.string().describe('The object exactly as the caller named it, as a short noun, e.g. "valve", "pipe", "fitting", "tool", "wrench", "clamp", "patch", "towels", "bucket", "shelf", "water". Do not substitute a more specific object than the caller said.');
+const thing = z.string().describe('The object exactly as the caller named it, as a short noun, e.g. "pipe", "toolbox", "box", "tool", "wrench", "hammer", "screwdriver", "towels", "bucket", "shelf", "water". Do not substitute a more specific object than the caller said.');
 const color = z.string().nullable().describe('A color the caller mentioned for the object, or null.');
-const item = z.enum(['wrench', 'patch', 'clamp', 'towels', 'bucket']);
+const item = z.enum(['wrench', 'screwdriver', 'hammer', 'towels', 'bucket']);
 
 export const grandmaTools = [
   tool({
@@ -93,12 +104,27 @@ export const grandmaTools = [
     execute: async ({ item, where }) => runAction({ type: 'place', item: item as ItemId, target: { id: where === 'shelf' ? 'dry_spot' : 'puddle' } }),
   }),
   tool({
-    name: 'twist', description: 'Turn a valve, pipe or fitting the caller names. Only pass a direction the caller actually said.',
-    parameters: z.object({ thing, color, direction: z.enum(['clockwise', 'counterclockwise']).nullable().describe('null if the caller did not say which way. "Tighten"/"righty-tighty"/"close" = clockwise; "loosen"/"open" = counterclockwise.') }),
-    execute: async ({ thing, color, direction }) => runAction({ type: 'rotate', target: target(thing, color), ...(direction ? { direction } : {}) }),
+    name: 'open_toolbox', description: 'Open a toolbox the caller names (there are red, blue and green ones on the table) to see which tool is inside.',
+    parameters: z.object({ thing, color }),
+    execute: async ({ thing, color }) => runAction({ type: 'open', target: target(thing, color) }),
   }),
-  tool({ name: 'apply_patch', description: 'Press the rubber patch onto the leaking pipe joint.', parameters: z.object({}), execute: async () => runAction({ type: 'apply_patch', target: { id: 'pipe_joint' } }) }),
-  tool({ name: 'clamp_patch', description: 'Fasten the metal clamp over the patch on the pipe joint.', parameters: z.object({}), execute: async () => runAction({ type: 'secure_patch', target: { id: 'pipe_joint' } }) }),
+  tool({
+    name: 'twist', description: 'Turn the pipe or fitting the caller names, using the wrench. Only pass a direction the caller actually said.',
+    parameters: z.object({ thing, color, direction: z.enum(['clockwise', 'counterclockwise']).nullable().describe('null if the caller did not say which way. "Tighten"/"righty-tighty"/"close" = clockwise; "loosen"/"open" = counterclockwise.') }),
+    execute: async ({ thing, color, direction }) => {
+      // Turning the pipe implies getting to it: walk over and bend down first, then turn. The game still
+      // checks reach, posture and the wrench at each step, and any failure is reported as-is.
+      const pipe = target(thing, color);
+      const now = game.getObservation();
+      const inReach = now.surroundings.some(o => o.id === 'pipe_joint' && o.reachable);
+      const bent = now.grandma.posture === 'bent';
+      const steps: Action[] = [];
+      if (!inReach) { if (bent) steps.push({ type: 'stand' }); steps.push({ type: 'move_to', target: pipe }, { type: 'bend' }); }
+      else if (!bent) steps.push({ type: 'bend' });
+      steps.push({ type: 'rotate', target: pipe, ...(direction ? { direction } : {}) });
+      return runSequence(steps);
+    },
+  }),
   tool({ name: 'put_phone_on_shelf', description: 'Set the phone down on the dry shelf to free both hands.', parameters: z.object({}), execute: async () => runAction({ type: 'place_phone', target: { id: 'dry_spot' } }) }),
   tool({ name: 'pick_up_phone', description: 'Pick the phone back up from the shelf.', parameters: z.object({}), execute: async () => runAction({ type: 'retrieve_phone' }) }),
   tool({

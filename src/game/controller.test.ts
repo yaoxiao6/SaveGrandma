@@ -134,7 +134,7 @@ describe('interpretation belongs to the simulation, without an autonomous solver
   });
   it('precise valid instructions are reliable at every stress band across seeds', () => {
     for (const elapsed of [0, 25, 41]) for (const seed of [1, 7, 22, 42, 99]) {
-      const t = setup(seed); t.sim.advance(elapsed); t.run(...FIND_WRENCH, go('pipe_joint'), { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' });
+      const t = setup(seed); t.sim.advance(elapsed); t.run(...FIND_WRENCH, go('pipe_joint'), { type: 'bend' }, { type: 'rotate', target: { id: 'pipe_joint' }, direction: 'counterclockwise' });
       expect(t.sim.readState().stage).toBe('won');
       expect(t.events.some(e => e.type === 'misunderstanding')).toBe(false);
     }
@@ -204,7 +204,7 @@ describe('queue, lifecycle and ownership', () => {
   });
   it('cancels active repair before its atomic commit and removes queued work', () => {
     const t = setup(); t.run(...FIND_WRENCH, go('pipe_joint'), { type: 'bend' });
-    t.send({ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'clockwise' }); t.send({ type: 'wait', seconds: 10 });
+    t.send({ type: 'rotate', target: { id: 'pipe_joint' }, direction: 'counterclockwise' }); t.send({ type: 'wait', seconds: 10 });
     t.sim.advance(2); t.controller.cancelActions(); t.sim.advance(10);
     expect(t.sim.readState().stage).toBe('running'); expect(t.sim.readState().leakRate).toBe(TUNING.initialLeakPerSecond);
     expect(t.results().filter(r => r.status === 'cancelled')).toHaveLength(2);

@@ -1,7 +1,7 @@
 import { lensYaw, lookAngles, turnYaw } from './phone';
 import { isActionRequest } from './action-contract';
-import { distance, ids, normalize, OBJECTS, radians, TUNING } from './config';
-import type { Acceptance, Action, ActionRequest, Band, GameController, GameEvent, ItemId, ObjectId, Observation, ReasonCode, Result, Stage, Target, Vec2 } from './types';
+import { distance, ids, normalize, OBJECTS, radians, TOOLBOXES, TOOLS, TUNING } from './config';
+import type { Acceptance, Action, ActionRequest, Band, GameController, GameEvent, ItemId, ObjectId, Observation, ReasonCode, Result, Stage, Target, ToolboxId, ToolId, Vec2 } from './types';
 
 type Queued = { id: string; request: ActionRequest };
 type Active = Queued & { target?: ObjectId; elapsed: number; duration: number; from: Vec2; to?: Vec2 };
@@ -9,15 +9,18 @@ export type WorldState = {
   runId: string; seed: number; stage: Stage; elapsed: number; water: number; leakRate: number;
   grandma: { position: Vec2; yaw: number; posture: 'standing' | 'bent'; held: ItemId[] };
   phone: { mode: 'selfie' | 'rear'; placement: 'hand' | 'dry_spot'; yaw: number; pitch: number; fixedYaw: number };
-  items: Record<ItemId, { position: Vec2; height: number; location: 'world' | 'held' | 'used' }>;
-  patchApplied: boolean; towelRemaining: number; bucketRemaining: number; towelUsed: boolean; bucketUsed: boolean;
+  items: Record<ItemId, { position: Vec2; height: number; location: 'toolbox' | 'world' | 'held' | 'used' }>;
+  /** Which tool each toolbox hides; shuffled per seed so the player has to look. */
+  toolboxes: Record<ToolboxId, { open: boolean; tool: ToolId }>;
+  towelRemaining: number; bucketRemaining: number; towelUsed: boolean; bucketUsed: boolean;
   active: Active | null; queue: Queued[];
 };
 type Failure = { code: ReasonCode; message: string; candidates?: ObjectId[] };
 let runCounter = 0;
 // A page reload must not accidentally reuse a run ID still held by a voice service.
 const instanceId = globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-const itemIds: ItemId[] = ['wrench', 'patch', 'clamp', 'towels', 'bucket'];
+const itemIds: ItemId[] = [...TOOLS, 'towels', 'bucket'];
+const isToolbox = (id: ObjectId): id is ToolboxId => (TOOLBOXES as ObjectId[]).includes(id);
 const clone = <T,>(value: T): T => structuredClone(value);
 const failure = (code: ReasonCode, message: string): Failure => ({ code, message });
 export class Simulation implements GameController {
@@ -34,13 +37,22 @@ export class Simulation implements GameController {
   private initialize(seed: number) {
     this.randomState = seed >>> 0;
     this.remainder = 0;
+    // Deal the three tools into the three toolboxes (seeded Fisher-Yates).
+    const dealt = [...TOOLS];
+    for (let i = dealt.length - 1; i > 0; i--) { const j = Math.floor(this.random() * (i + 1)); [dealt[i], dealt[j]] = [dealt[j], dealt[i]]; }
+    const toolboxes = Object.fromEntries(TOOLBOXES.map((box, i) => [box, { open: false, tool: dealt[i] }])) as WorldState['toolboxes'];
+    const boxOf = (tool: ToolId) => TOOLBOXES.find(box => toolboxes[box].tool === tool)!;
     this.state = {
       runId: `run-${instanceId}-${++runCounter}`, seed, stage: 'ready', elapsed: 0, water: 0, leakRate: TUNING.initialLeakPerSecond,
       grandma: { position: { x: 0, z: 0.9 }, yaw: 0, posture: 'standing', held: [] },
       // The call opens on the rear camera so the caller sees the flooding room, not Grandma's face.
       phone: { mode: 'selfie', placement: 'hand', yaw: 0, pitch: 0, fixedYaw: 0 },
-      items: Object.fromEntries(itemIds.map(id => [id, { position: { ...OBJECTS[id].position }, height: OBJECTS[id].height, location: 'world' }])) as WorldState['items'],
-      patchApplied: false, towelRemaining: 0, bucketRemaining: 0, towelUsed: false, bucketUsed: false, active: null, queue: [],
+      items: Object.fromEntries(itemIds.map(id => {
+        const tool = (TOOLS as ItemId[]).includes(id);
+        const home = tool ? OBJECTS[boxOf(id as ToolId)].position : OBJECTS[id].position;
+        return [id, { position: { ...home }, height: OBJECTS[id].height, location: tool ? 'toolbox' : 'world' }];
+      })) as WorldState['items'],
+      toolboxes, towelRemaining: 0, bucketRemaining: 0, towelUsed: false, bucketUsed: false, active: null, queue: [],
     };
   }
 
@@ -83,7 +95,8 @@ export class Simulation implements GameController {
       const angle = Math.atan2(p.x - s.grandma.position.x, p.z - s.grandma.position.z) * 180 / Math.PI;
       // Grandma's perception, independent of which phone camera is selected.
       const visible = Math.abs(normalize(angle - s.grandma.yaw - s.phone.yaw)) <= 70 || d < 0.6;
-      return { id, name: OBJECTS[id].name, color: OBJECTS[id].color, distance: Math.round(d * 10) / 10, reachable: d <= TUNING.reach, visible };
+      const name = isToolbox(id) ? `${OBJECTS[id].name} (${s.toolboxes[id].open ? 'open' : 'closed'})` : OBJECTS[id].name;
+      return { id, name, color: OBJECTS[id].color, distance: Math.round(d * 10) / 10, reachable: d <= TUNING.reach, visible };
     }).filter(o => o.visible);
     return clone({
       runId: s.runId, stage: s.stage, elapsedSeconds: s.elapsed,
@@ -145,9 +158,14 @@ export class Simulation implements GameController {
       const label = target.description?.trim().toLowerCase();
       return label && (OBJECTS[id].aliases.includes(label) || OBJECTS[id].name.toLowerCase() === label);
     });
-    candidates = candidates.filter(id => perceived.includes(id) && this.available(id));
+    // A tool that is still shut in a toolbox is not "unknown"; say where to look.
+    const hidden = candidates.filter(id => (TOOLS as ObjectId[]).includes(id) && this.state.items[id as ItemId].location === 'toolbox');
+    // Grandma knows her own bathroom: walking to a named thing does not require it to be in view right now.
+    candidates = candidates.filter(id => (q.request.action.type === 'move_to' || perceived.includes(id)) && this.available(id));
+    if (!candidates.length && hidden.length) return failure('NOT_FOUND', `I don’t see a ${OBJECTS[hidden[0]].name.toLowerCase()} anywhere. Maybe it’s in one of the toolboxes?`);
     const action = q.request.action;
-    if (action.type === 'rotate') candidates = candidates.filter(id => id === 'supply_valve' || id === 'pipe_joint');
+    if (action.type === 'rotate') candidates = candidates.filter(id => id === 'pipe_joint');
+    if (action.type === 'open') candidates = candidates.filter(isToolbox);
     if (action.type === 'grab') candidates = candidates.filter(id => OBJECTS[id].portable);
     if (target.qualifiers?.color) candidates = candidates.filter(id => OBJECTS[id].color === target.qualifiers!.color!.toLowerCase());
     if (!candidates.length) return failure('CLARIFICATION_NEEDED', 'I cannot identify that target here. Specify a visible object or its identifier.');
@@ -205,6 +223,7 @@ export class Simulation implements GameController {
         break;
       case 'grab':
         if (!target || !OBJECTS[target].portable) return failure('INVALID_TARGET', 'That object cannot be picked up.');
+        if (s.items[target as ItemId].location === 'toolbox') return failure('NOT_FOUND', `I don’t see a ${OBJECTS[target].name.toLowerCase()} anywhere. Maybe it’s in one of the toolboxes?`);
         if (!this.available(target)) return failure('ALREADY_DONE', 'That object has already been picked up or used.');
         if (freeHands < 1) return failure('HANDS_FULL', 'Put down a held item or place the phone on its shelf first.');
         break;
@@ -213,21 +232,19 @@ export class Simulation implements GameController {
         if (target !== 'dry_spot' && target !== 'puddle') return failure('INVALID_TARGET', 'Place items on the dry shelf or at the puddle.');
         if ((a.item === 'bucket' && s.bucketUsed) || (a.item === 'towels' && s.towelUsed)) return failure('ALREADY_DONE', 'This mitigation is already used.');
         break;
-      case 'rotate':
-        if (target !== 'supply_valve' && target !== 'pipe_joint') return failure('INVALID_TARGET', 'Only a pipe fitting can be rotated.');
-        if (target === 'pipe_joint' && !g.held.includes('wrench')) return failure('MISSING_TOOL', 'Pick up the wrench before turning the brass joint.');
-        if (target === 'supply_valve' && freeHands < 1) return failure('HANDS_FULL', 'Free a hand before turning the valve.');
-        break;
-      case 'apply_patch': case 'secure_patch': {
-        if (target !== 'pipe_joint') return failure('INVALID_TARGET', 'Work on the leaking pipe joint.');
-        if (s.phone.placement === 'hand') return failure('PHONE_MUST_BE_PLACED', 'Place the phone on the dry shelf; this task needs both hands.');
-        const tool = a.type === 'apply_patch' ? 'patch' : 'clamp';
-        if (!g.held.includes(tool)) return failure('MISSING_TOOL', `Pick up the ${tool} first.`);
-        if (g.held.length > 1) return failure('HANDS_FULL', 'Put down the other item so one hand can steady the pipe.');
-        if (a.type === 'apply_patch' && s.patchApplied) return failure('ALREADY_DONE', 'The patch is already wrapped around the pipe.');
-        if (a.type === 'secure_patch' && !s.patchApplied) return failure('PATCH_REQUIRED', 'Apply the rubber patch before securing the clamp.');
+      case 'rotate': {
+        if (target !== 'pipe_joint') return failure('INVALID_TARGET', 'Only the leaking pipe can be turned.');
+        if (!g.held.includes('wrench')) {
+          const wrong = g.held.find(item => (TOOLS as ItemId[]).includes(item));
+          return failure('MISSING_TOOL', wrong ? `A ${wrong} won’t grip the pipe. I need the wrench.` : 'I need the wrench to turn the pipe.');
+        }
         break;
       }
+      case 'open':
+        if (!target || !isToolbox(target)) return failure('INVALID_TARGET', 'Only the toolboxes can be opened.');
+        if (s.toolboxes[target].open) return failure('ALREADY_DONE', `The ${OBJECTS[target].name.toLowerCase()} is already open.`);
+        if (freeHands < 1) return failure('HANDS_FULL', 'Free a hand to lift the lid.');
+        break;
     }
   }
 
@@ -295,11 +312,18 @@ export class Simulation implements GameController {
         if (active.target === 'puddle' && a.item === 'bucket') { this.consume('bucket'); s.bucketUsed = true; s.bucketRemaining = TUNING.bucketCapacity; message = 'The bucket is catching water. It will fill up.'; }
         break;
       case 'rotate':
-        if (a.direction === 'clockwise') { s.leakRate = 0; win = true; message = active.target === 'supply_valve' ? 'The supply valve is closed. The water has stopped.' : 'The joint is tightened. The water has stopped.'; }
-        else { s.leakRate = Math.min(TUNING.initialLeakPerSecond * TUNING.maxLeakMultiplier, s.leakRate * TUNING.wrongRotationMultiplier); code = 'LEAK_WORSENED'; message = 'That loosened the fitting. Water is flowing faster; turn clockwise to tighten it.'; }
+        // Lefty to fix: the red pipe seals when turned counterclockwise; clockwise forces it open and worsens the leak.
+        if (a.direction === 'counterclockwise') { s.leakRate = 0; win = true; message = 'The red pipe is sealed. The water has stopped.'; }
+        else { s.leakRate = Math.min(TUNING.initialLeakPerSecond * TUNING.maxLeakMultiplier, s.leakRate * TUNING.wrongRotationMultiplier); code = 'LEAK_WORSENED'; message = 'That forced the pipe the wrong way. Water is flowing faster; turn it counterclockwise to seal it.'; }
         break;
-      case 'apply_patch': this.consume('patch'); s.patchApplied = true; message = 'The patch is wrapped around the joint; it still needs a clamp.'; break;
-      case 'secure_patch': this.consume('clamp'); s.leakRate = 0; win = true; message = 'The clamp holds the patch securely. The water has stopped.'; break;
+      case 'open': {
+        const box = active.target as ToolboxId;
+        const tool = s.toolboxes[box].tool;
+        s.toolboxes[box].open = true;
+        s.items[tool].location = 'world';
+        message = `The ${OBJECTS[box].name.toLowerCase()} is open. There’s a ${tool} inside.`;
+        break;
+      }
     }
     this.result(active, code, message, active.target);
     if (win) this.terminal('won', message);

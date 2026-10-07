@@ -14,15 +14,13 @@ export type ParseOutcome = { ok: true; steps: CommandStep[] } | { ok: false; phr
 
 export const EXAMPLES = [
   'switch to the rear camera',
-  'go to the valve',
-  'turn the valve clockwise',
+  'go to the toolboxes',
+  'open the red toolbox',
   'pick up the wrench',
   'walk to the pipe',
   'bend down',
-  'tighten the joint',
+  'tighten the pipe',
   'put the phone on the shelf',
-  'apply the patch',
-  'secure the clamp',
   'put the towels on the puddle',
   'look left',
   'walk forward 1 meter',
@@ -30,17 +28,20 @@ export const EXAMPLES = [
 ];
 
 const OBJECT_WORDS: [RegExp, ObjectId][] = [
-  [/\b(red )?(supply )?valve\b/, 'supply_valve'],
-  [/\b(pipe joint|joint|pipe|leak)\b/, 'pipe_joint'],
-  [/\bwrench\b/, 'wrench'],
-  [/\bpatch\b/, 'patch'],
-  [/\bclamp\b/, 'clamp'],
+  [/\bred (tool ?box|box)\b/, 'red_toolbox'],
+  [/\bblue (tool ?box|box)\b/, 'blue_toolbox'],
+  [/\bgreen (tool ?box|box)\b/, 'green_toolbox'],
+  [/\b(tool ?box(es)?|boxes|table)\b/, 'blue_toolbox'],
+  [/\b(pipe joint|joint|pipe|leak|valve)\b/, 'pipe_joint'],
+  [/\b(wrench|spanner)\b/, 'wrench'],
+  [/\bscrewdriver\b/, 'screwdriver'],
+  [/\bhammer\b/, 'hammer'],
   [/\btowels?\b/, 'towels'],
   [/\bbucket\b/, 'bucket'],
   [/\b(shelf|dry spot|dry place|counter)\b/, 'dry_spot'],
   [/\b(puddle|water|floor|leak spot)\b/, 'puddle'],
 ];
-const ITEMS: ItemId[] = ['wrench', 'patch', 'clamp', 'towels', 'bucket'];
+const ITEMS: ItemId[] = ['wrench', 'screwdriver', 'hammer', 'towels', 'bucket'];
 
 const findObject = (text: string, exclude?: ObjectId): ObjectId | undefined => {
   for (const [pattern, id] of OBJECT_WORDS) if (id !== exclude && pattern.test(text)) return id;
@@ -70,17 +71,20 @@ function parseClause(raw: string): Action | undefined {
 
   if (/\bwait\b|\bhold on\b|\bstay there\b/.test(text)) return { type: 'wait', seconds: number(text, 3) };
 
-  if (/\b(apply|press|stick|wrap|put)\b.*\bpatch\b|\bpatch (the|it|up)\b/.test(text)) return { type: 'apply_patch', target: target('pipe_joint') };
-  if (/\b(secure|tighten|fasten|attach|put|clamp)\b.*\bclamp\b|\bclamp (it|the)\b/.test(text)) return { type: 'secure_patch', target: target('pipe_joint') };
+  if (/\b(open|unlatch|check|look in|look inside|search)\b/.test(text) && object && object.endsWith('_toolbox')) {
+    // "the toolbox" without a color: let the game ask which one (or mishear under stress).
+    if (!/\b(red|blue|green)\b/.test(text)) return { type: 'open', target: { candidates: ['red_toolbox', 'blue_toolbox', 'green_toolbox'] } };
+    return { type: 'open', target: target(object) };
+  }
 
-  if (/\b(turn|rotate|twist|tighten|loosen|close|shut|open|crank)\b/.test(text) && object && (object === 'supply_valve' || object === 'pipe_joint')) {
+  if (/\b(turn|rotate|twist|tighten|loosen|close|shut|crank|fix)\b/.test(text) && object === 'pipe_joint') {
     const dir = /\b(counter ?clockwise|anticlockwise|anti clockwise|the other way|loosen|open)\b/.test(text) ? 'counterclockwise'
       : /\b(clockwise|tighten|close|shut|righty)\b/.test(text) ? 'clockwise' : undefined;
     return { type: 'rotate', target: target(object), direction: dir };
   }
   if (/\b(turn|rotate|twist)\b/.test(text) && /\b(it|that)\b/.test(text) && !object) {
     const dir = /\b(counter ?clockwise|anticlockwise|the other way)\b/.test(text) ? 'counterclockwise' : /\bclockwise\b/.test(text) ? 'clockwise' : undefined;
-    return { type: 'rotate', target: { candidates: ['supply_valve', 'pipe_joint'] }, direction: dir };
+    return { type: 'rotate', target: target('pipe_joint'), direction: dir };
   }
 
   if (/\b(put|place|set|drop|lay)\b/.test(text) && object) {
@@ -119,6 +123,8 @@ export function parseInstruction(line: string): ParseOutcome {
   for (const clause of clauses) {
     const action = parseClause(clause);
     if (!action) return { ok: false, phrase: clause, hint: `I don’t know how to do “${clause}”. Try something like “${EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]}”.` };
+    // Turning the pipe implies walking over and bending down; the game still checks every prerequisite.
+    if (action.type === 'rotate' && !steps.some(s => s.action.type === 'move_to' || s.action.type === 'bend')) steps.push({ action: { type: 'move_to', target: action.target } }, { action: { type: 'bend' } });
     steps.push({ action });
   }
   return { ok: true, steps };

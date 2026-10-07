@@ -17,17 +17,28 @@ async function call(name: string, args: object = {}) {
 group('Grandma voice tools', () => {
   beforeEach(() => { gameController.reset({ seed: 7 }); gameController.start(); });
 
-  it('solves the valve route through tools', async () => {
+  it('finds the wrench in the toolboxes and tightens the red pipe through tools', async () => {
     expect((await call('switch_camera', { camera: 'back' })).status).toBe('completed');
-    expect((await call('walk_to', { thing: 'the red valve', color: null })).status).toBe('completed');
-    const twist = await call('twist', { thing: 'valve', color: 'red', direction: 'clockwise' });
+    expect((await call('walk_to', { thing: 'the toolboxes', color: 'blue' })).status).toBe('completed');
+    expect((await call('pick_up', { thing: 'wrench', color: null })).status).toBe('failed');
+    for (const color of ['red', 'blue', 'green']) expect((await call('open_toolbox', { thing: 'toolbox', color })).status).toBe('completed');
+    expect((await call('pick_up', { thing: 'the wrench', color: null })).status).toBe('completed');
+    expect((await call('walk_to', { thing: 'the red pipe', color: null })).status).toBe('completed');
+    expect((await call('bend_down')).status).toBe('completed');
+    const twist = await call('twist', { thing: 'pipe', color: 'red', direction: 'counterclockwise' });
     expect(twist.status).toBe('completed');
     expect(gameController.getObservation().stage).toBe('won');
   });
 
+  it('asks which toolbox when the caller does not say', async () => {
+    await call('walk_to', { thing: 'toolbox', color: 'blue' });
+    const open = await call('open_toolbox', { thing: 'toolbox', color: null });
+    expect(['clarification_needed', 'completed']).toContain(open.status);
+  });
+
   it('asks which way when no direction was given', async () => {
-    await call('walk_to', { thing: 'valve', color: null });
-    const twist = await call('twist', { thing: 'valve', color: null, direction: null });
+    await call('walk_to', { thing: 'pipe', color: null });
+    const twist = await call('twist', { thing: 'pipe', color: null, direction: null });
     expect(twist.status).toBe('clarification_needed');
   });
 
@@ -39,7 +50,7 @@ group('Grandma voice tools', () => {
 
   it('hides object ids from the model', async () => {
     const seen = await call('look_around');
-    expect(JSON.stringify(seen)).not.toMatch(/supply_valve|pipe_joint|dry_spot/);
+    expect(JSON.stringify(seen)).not.toMatch(/pipe_joint|dry_spot|red_toolbox|wrench/);
   });
 
   it('rejects actions when the call is paused', async () => {

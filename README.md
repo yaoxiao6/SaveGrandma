@@ -13,7 +13,7 @@ npm run dev
 
 Voice: copy `.env.example` to `.env.local` and set `OPENAI_API_KEY`, then restart the dev server. Starting the call connects Grandma (`gpt-realtime-2.1-mini` over WebRTC via the OpenAI Agents SDK); allow microphone access and talk to her. The key stays in the Vite server, which mints short-lived client secrets at `POST /api/realtime-token`. Voice code lives in `src/voice/`.
 
-Open the printed localhost URL. The game is a portrait 9:16 phone screen, as if you were video-calling Grandma. Press Start, let the intro call connect, then type instructions in the field at the bottom and press Enter. The mic button above it is a placeholder for the voice agent. Typed text is a **placeholder for Yao’s voice agent**: it goes through a small keyword matcher in `src/voice/text-commands.ts` and then the same `gameCommands` bridge the voice adapter will use. Type `help` for example phrases. The call opens on the front camera, looking at Grandma; asking her to switch to the rear camera is part of the challenge. The quickest win is `switch to the rear camera, go to the valve, turn the valve clockwise`. Compound lines split on commas, “then” and “and”, and stop at the first failed step.
+Open the printed localhost URL. The game is a portrait 9:16 phone screen, as if you were video-calling Grandma. Press Start, let the intro call connect, then type instructions in the field at the bottom and press Enter. The mic button above it is a placeholder for the voice agent. Typed text is a **placeholder for Yao’s voice agent**: it goes through a small keyword matcher in `src/voice/text-commands.ts` and then the same `gameCommands` bridge the voice adapter will use. Type `help` for example phrases. The call opens on the front camera, looking at Grandma; asking her to switch to the rear camera is part of the challenge. The quickest win is `switch to the rear camera, go to the toolboxes, open the red toolbox, open the blue toolbox, open the green toolbox, pick up the wrench, walk to the pipe, bend down, tighten the pipe`. Compound lines split on commas, “then” and “and”, and stop at the first failed step.
 
 - `npm test` — deterministic simulation and controller tests.
 - `npm run check` — TypeScript and simulation tests.
@@ -28,8 +28,8 @@ There is no developer console anymore; the scripted presets in `src/game/presets
 ## What is implemented
 
 - Sequential structured actions, phone selfie/rear cameras, Grandma-relative and camera-relative directions, procedural Grandma, room interactions, reaching, posture and hands.
-- Three complete solutions: close valve, wrench repair, patch secured by clamp. Both patch steps require the phone on the dry shelf and a spare hand.
-- Five minutes to flooding with no intervention. One-use towels and bucket add at most 24 and 36 seconds at the initial leak rate; they cannot solve the leak.
+- One solution: find the wrench in one of three toolboxes (the deal is seeded), carry it to the red pipe, bend down and turn it counterclockwise to seal it. The screwdriver and hammer are decoys.
+- One minute to flooding with no intervention. One-use towels and bucket add at most 6 and 9 seconds at the initial leak rate; they cannot solve the leak.
 - Seeded stress-dependent ambiguity (15/30/45%). Precise instructions have no random interpretation failures. Unclear targets/directions return structured clarification results.
 - Cancellation at safe points, pause/resume, full reset, stale-run rejection, progress/results/terminal events and a bounded queue.
 - A typed-instruction placeholder for the voice agent, with a call transcript showing Grandma’s results, clarifications and misunderstandings.

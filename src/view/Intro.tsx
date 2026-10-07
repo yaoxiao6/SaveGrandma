@@ -6,9 +6,10 @@ import type { VoiceStatus } from '../voice/useVoice';
 export const GREETING = 'Honey, I’m trapped in the bathroom and it’s flooding in here! Can you help me get out of this pickle?';
 export const RULES = [
   'Grandma only does what you tell her.',
-  'Stop the water before the room floods.',
+  'You have one minute before the room floods.',
+  'The wrench is in one of the three toolboxes on the table.',
   'Say “front camera” to see Grandma, “rear camera” for the room.',
-  'Be specific: “grab the wrench”, “turn the valve clockwise”.',
+  'Be specific: “open the red toolbox”, “turn the pipe counterclockwise”.',
 ];
 /** Served from public/audio; loops until the call is answered. */
 const RINGTONE = '/audio/iphone-ringtone.mp3';
