@@ -93,9 +93,8 @@ export default function Intro({ voice, onGreeting, onDone, onFinished }: { voice
   </div>;
   if (phase === 'fade-out') return <div className="intro-black fade-out" />;
   if (phase === 'fade-in') return <div className="intro-black fade-in" />;
-  const text = live.current ? voice.grandmaSaid : GREETING;
+  // Grandma's words land in the transcript, so no speech bubble is drawn over her face.
   return <div className="intro-layer screen-on">
-    {phase === 'greeting' && text && <div className="speech-bubble"><p>{text}</p></div>}
     {phase === 'rules' && <div className="rules-backdrop"><RulesList className="rules rules-center" /></div>}
   </div>;
 }

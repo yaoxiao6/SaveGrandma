@@ -118,9 +118,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .intro-layer { position: absolute; inset: 0; z-index: 15; pointer-events: none; }
 .screen-on { animation: screen-on .9s ease-out both; }
 @keyframes screen-on { 0% { background: #000; } 60% { background: #00000099; } 100% { background: transparent; } }
-.speech-bubble { position: absolute; left: 18px; right: 18px; bottom: 22cqh; background: #fffdf4; color: #3b2a4a; border: 4px solid #3b2a4a; border-radius: 26px; padding: 18px 20px; box-shadow: 0 8px 0 #3b2a4a; animation: bubble-pop .45s cubic-bezier(.2,1.4,.4,1) both; animation-delay: .5s; }
-.speech-bubble::after { content: ""; position: absolute; top: -26px; left: 50%; width: 26px; height: 26px; background: #fffdf4; border: 4px solid #3b2a4a; border-right: 0; border-bottom: 0; transform: translateX(-50%) rotate(45deg); }
-.speech-bubble p { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.3; text-align: center; }
 @keyframes bubble-pop { from { opacity: 0; transform: scale(.6) translateY(20px); } to { opacity: 1; transform: none; } }
 .rules-backdrop { position: absolute; inset: 0; display: grid; place-items: center; background: #0f1a15cc; padding: 24px; animation: to-black .4s ease-out both; }
 .rules { color: var(--ink); }
