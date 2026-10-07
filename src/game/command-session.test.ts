@@ -113,7 +113,7 @@ describe('Yao’s command-session integration', () => {
   it('flooding settles pending work and aborts pending provider requests', async () => {
     const t = setup(); const turn = t.session.beginTurn();
     const pending = t.session.submit(turn.token, [{ action: { type: 'wait', seconds: 500 } }, wait]);
-    t.simulation.advance(130); expect((await pending).stage).toBe('lost'); expect(turn.signal.aborted).toBe(true);
+    t.simulation.advance(320); expect((await pending).stage).toBe('lost'); expect(turn.signal.aborted).toBe(true);
   });
   it('disposing aborts the pending turn and prevents subsequent submissions', async () => {
     const t = setup(); const turn = t.session.beginTurn(); const pending = t.session.submit(turn.token, [wait]);

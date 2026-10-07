@@ -1,7 +1,7 @@
 import type { Action, ObjectId, ToolboxId, ToolId, Vec2 } from './types';
 export const TUNING = {
   // One minute from the first drip to Grandma drowning.
-  floodThreshold: 100, initialLeakPerSecond: 100 / 120, wrongRotationMultiplier: 1.65, maxLeakMultiplier: 4,
+  floodThreshold: 100, initialLeakPerSecond: 100 / 300, wrongRotationMultiplier: 1.65, maxLeakMultiplier: 4,
   towelCapacity: 10, bucketCapacity: 15, reach: 1.3, moveSpeed: 0.85, approachDistance: 0.95,
   queueLimit: 64, tickSeconds: 0.05, stressMedium: 0.33, stressHigh: 0.67,
   mistakes: { low: 0.15, medium: 0.30, high: 0.45 },

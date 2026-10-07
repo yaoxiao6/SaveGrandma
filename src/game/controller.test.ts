@@ -30,19 +30,19 @@ describe('public-controller end-to-end solutions', () => {
     t.sim.advance(100);
     expect(t.sim.readState().elapsed).toBe(elapsed);
   });
-  it('floods at two minutes, not before, without intervention', () => {
-    const t = setup(); t.sim.advance(119.9);
+  it('floods at five minutes, not before, without intervention', () => {
+    const t = setup(); t.sim.advance(299.9);
     expect(t.controller.getObservation().stage).toBe('running');
     t.sim.advance(0.1);
     expect(t.controller.getObservation().stage).toBe('lost');
     expect(t.sim.readState().water).toBe(TUNING.floodThreshold);
   });
-  it('towels and bucket are bounded, cannot be repeatedly collected, and add 30 seconds total', () => {
+  it('towels and bucket are bounded, cannot be repeatedly collected, and add 75 seconds total', () => {
     const t = setup(); runPreset(t.controller, 'mitigation'); t.sim.advance(30);
     expect(t.results().every(r => r.status === 'completed')).toBe(true);
     expect(t.sim.readState().towelUsed).toBe(true);
     expect(t.sim.readState().bucketUsed).toBe(true);
-    t.sim.advance(149.9 - t.sim.readState().elapsed);
+    t.sim.advance(374.9 - t.sim.readState().elapsed);
     expect(t.sim.readState().stage).toBe('running');
     t.sim.advance(0.1);
     expect(t.sim.readState().stage).toBe('lost');
@@ -53,7 +53,7 @@ describe('public-controller end-to-end solutions', () => {
     const t = setup(); runPreset(t.controller, 'wrong_way'); t.sim.advance(30);
     expect(t.last().code).toBe('LEAK_WORSENED');
     expect(t.sim.readState().leakRate).toBeCloseTo(TUNING.initialLeakPerSecond * TUNING.wrongRotationMultiplier);
-    t.sim.advance(60); expect(t.sim.readState().stage).toBe('lost');
+    t.sim.advance(200); expect(t.sim.readState().stage).toBe('lost');
   });
 });
 
@@ -140,7 +140,7 @@ describe('interpretation belongs to the simulation, without an autonomous solver
     }
   });
   it('uses 15/30/45 percent stress thresholds with reproducible increased mistakes', () => {
-    const counts = [0, 50, 90].map(elapsed => {
+    const counts = [0, 125, 225].map(elapsed => {
       let mistakes = 0;
       for (let seed = 0; seed < 80; seed++) {
         const t = setup(seed); t.sim.advance(elapsed); t.run(go('blue_toolbox'));
