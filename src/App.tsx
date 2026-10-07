@@ -75,9 +75,11 @@ export default function App() {
   // The mic stays open during a live call so you can barge in; the server never answers on its own.
   const callLive = running && intro === 'done';
   useEffect(() => { setMute(!callLive); }, [callLive, setMute]);
+  // Her speaker is silent on your turn, so she can never talk over you; it reopens for her turn and the outro.
+  useEffect(() => { voice.setOutputMuted(callLive && turns.turn === 'player'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [callLive, turns.turn]);
   // Barge-in: when you start talking during Grandma's turn, she stops and the turn is yours.
   useEffect(() => {
-    if (!voice.speechStarted || !callLive || turns.turn !== 'grandma') return;
+    if (!voice.speechStarted || !callLive || (turns.turn !== 'grandma' && !voice.speaking)) return;
     voice.hush();
     turns.startPlayerTurn();
     // eslint-disable-next-line react-hooks/exhaustive-deps

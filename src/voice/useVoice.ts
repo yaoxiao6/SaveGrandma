@@ -58,12 +58,15 @@ export function useVoice() {
   /** Increments when the caller starts talking. Used for barge-in: Grandma stops when you speak. */
   const [speechStarted, setSpeechStarted] = useState(0);
   const responding = useRef(false);
+  /** Grandma's speaker output. Hard-muted on the client during the player's turn so barge-in is instant. */
+  const output = useRef<HTMLAudioElement | null>(null);
   const [muted, setMuted] = useState(false);
 
   const disconnect = useCallback(() => {
     stopSpeaking();
     session.current?.close();
     session.current = null;
+    output.current = null;
     releaseMicrophone();
     setStatus('idle'); setSpeaking(false); setMuted(false);
   }, []);
@@ -73,6 +76,7 @@ export function useVoice() {
     setError(''); setGrandmaSaid(''); setYouSaid('');
     // Call this from the click handler: the mic prompt and audio unlock must happen inside the user gesture.
     const audioElement = document.createElement('audio');
+    output.current = audioElement;
     audioElement.autoplay = true;
     void audioElement.play().catch(() => {});
     setStatus('microphone');
@@ -113,8 +117,8 @@ export function useVoice() {
       setYouSaid(lastTranscript(history, 'user'));
     });
     s.on('transport_event', event => {
-      if (event.type === 'input_audio_buffer.speech_started') setSpeechStarted(n => n + 1);
-      if (event.type === 'input_audio_buffer.committed') setSpeechEnded(n => n + 1);
+      if (event.type === 'input_audio_buffer.speech_started') { console.info('[voice] caller started speaking'); setSpeechStarted(n => n + 1); }
+      if (event.type === 'input_audio_buffer.committed') { console.info('[voice] caller finished speaking'); setSpeechEnded(n => n + 1); }
       if (event.type === 'response.created') responding.current = true;
       if (event.type === 'response.done') responding.current = false;
     });
@@ -148,7 +152,15 @@ export function useVoice() {
     } });
   }, []);
   /** Cut Grandma off mid-sentence (intro time cap, barge-in). */
-  const hush = useCallback(() => { session.current?.interrupt(); }, []);
+  const hush = useCallback(() => {
+    console.info('[voice] hush');
+    session.current?.interrupt();
+    // Belt and braces: whatever audio already reached the browser stops now, not when the server catches up.
+    const el = output.current; if (el) { el.muted = true; window.setTimeout(() => { if (el === output.current && !holdOutputMuted.current) el.muted = false; }, 600); }
+  }, []);
+  const holdOutputMuted = useRef(false);
+  /** Keep Grandma's speaker silent while it is the player's turn. */
+  const setOutputMuted = useCallback((value: boolean) => { holdOutputMuted.current = value; if (output.current) output.current.muted = value; }, []);
 
   /** Tell Grandma about something that happened outside a tool call, e.g. the leak stopping. */
   const notify = useCallback((text: string) => { session.current?.sendMessage(text); }, []);
@@ -166,5 +178,5 @@ export function useVoice() {
   /** End of the player's turn: Grandma answers whatever was said and acts on it. */
   const respond = useCallback(() => { if (responding.current) return; session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
 
-  return { status, error, grandmaSaid, youSaid, speaking, speechStarted, speechEnded, muted, connect, disconnect, setMute, notify, sayLine, greet, respond, hush };
+  return { status, error, grandmaSaid, youSaid, speaking, speechStarted, speechEnded, muted, connect, disconnect, setMute, setOutputMuted, notify, sayLine, greet, respond, hush };
 }
