@@ -1,6 +1,8 @@
 export type Vec2 = { x: number; z: number };
-export type ObjectId = 'supply_valve' | 'pipe_joint' | 'wrench' | 'patch' | 'clamp' | 'towels' | 'bucket' | 'dry_spot' | 'puddle';
-export type ItemId = 'wrench' | 'patch' | 'clamp' | 'towels' | 'bucket';
+export type ToolboxId = 'red_toolbox' | 'blue_toolbox' | 'green_toolbox';
+export type ToolId = 'wrench' | 'screwdriver' | 'hammer';
+export type ObjectId = 'pipe_joint' | ToolboxId | ToolId | 'towels' | 'bucket' | 'dry_spot' | 'puddle';
+export type ItemId = ToolId | 'towels' | 'bucket';
 export type Direction = 'forward' | 'backward' | 'left' | 'right';
 export type Frame = 'grandma' | 'camera';
 export type Stage = 'ready' | 'running' | 'paused' | 'won' | 'lost';
@@ -18,10 +20,10 @@ export type Action =
   | { type: 'grab'; target: Target }
   | { type: 'place'; target: Target; item: ItemId }
   | { type: 'rotate'; target: Target; direction?: 'clockwise' | 'counterclockwise' }
-  | { type: 'apply_patch' | 'secure_patch'; target: Target }
+  | { type: 'open'; target: Target }
   | { type: 'wait'; seconds: number };
 export type ActionRequest = { runId: string; action: Action; unresolved?: string[] };
-export type ReasonCode = 'OK' | 'INVALID_REQUEST' | 'STALE_RUN' | 'NOT_RUNNING' | 'QUEUE_FULL' | 'CLARIFICATION_NEEDED' | 'OUT_OF_REACH' | 'WRONG_POSTURE' | 'HANDS_FULL' | 'MISSING_TOOL' | 'PHONE_MUST_BE_PLACED' | 'PHONE_NOT_HELD' | 'INVALID_TARGET' | 'BLOCKED' | 'ALREADY_DONE' | 'PATCH_REQUIRED' | 'CANCELLED' | 'LEAK_WORSENED' | 'TERMINAL';
+export type ReasonCode = 'OK' | 'INVALID_REQUEST' | 'STALE_RUN' | 'NOT_RUNNING' | 'QUEUE_FULL' | 'CLARIFICATION_NEEDED' | 'OUT_OF_REACH' | 'WRONG_POSTURE' | 'HANDS_FULL' | 'MISSING_TOOL' | 'NOT_FOUND' | 'PHONE_NOT_HELD' | 'INVALID_TARGET' | 'BLOCKED' | 'ALREADY_DONE' | 'CANCELLED' | 'LEAK_WORSENED' | 'TERMINAL';
 export type Result = { actionId: string; runId: string; status: 'completed' | 'failed' | 'clarification_needed' | 'cancelled'; code: ReasonCode; message: string; targetId?: ObjectId; candidates?: ObjectId[] };
 export type Acceptance = { accepted: boolean; actionId: string; runId: string; code: ReasonCode; message: string };
 export type Observation = {

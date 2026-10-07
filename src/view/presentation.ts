@@ -1,10 +1,10 @@
 import { OBJECTS, normalize, radians, TUNING } from '../game/config';
 import type { WorldState } from '../game/controller';
 import { lookAngles, turnYaw } from '../game/phone';
-import type { ItemId, ObjectId } from '../game/types';
+import type { ItemId, ObjectId, ToolboxId } from '../game/types';
 
 export type Point3 = [number, number, number];
-export type AnimationName = 'Idle_Standing' | 'Idle_Bent' | 'Walk' | 'Look' | 'Turn' | 'Bend_Down' | 'Stand_Up' | 'Pick_Up' | 'Put_Down' | 'Phone_Place' | 'Phone_Retrieve' | 'Phone_Check' | 'Rotate_Valve' | 'Tighten_Joint' | 'Apply_Patch' | 'Secure_Clamp' | 'Relief' | 'Flooded';
+export type AnimationName = 'Idle_Standing' | 'Idle_Bent' | 'Walk' | 'Look' | 'Turn' | 'Bend_Down' | 'Stand_Up' | 'Pick_Up' | 'Put_Down' | 'Phone_Place' | 'Phone_Retrieve' | 'Phone_Check' | 'Open_Toolbox' | 'Tighten_Joint' | 'Relief' | 'Flooded';
 export type SceneFrame = {
   runId: string;
   character: {
@@ -14,7 +14,7 @@ export type SceneFrame = {
   };
   phone: { position: Point3; target: Point3; yaw: number; mode: 'selfie' | 'rear'; placement: 'hand' | 'dry_spot' };
   anchors: Record<ObjectId, Point3>;
-  effects: { waterHeight: number; waterRatio: number; leakRatio: number; patchApplied: boolean; bucketUsed: boolean; towelsUsed: boolean; bucketFill: number; towelSaturation: number };
+  effects: { waterHeight: number; waterRatio: number; leakRatio: number; openToolboxes: ToolboxId[]; bucketUsed: boolean; towelsUsed: boolean; bucketFill: number; towelSaturation: number };
 };
 const blendAngle = (from: number, to: number, progress: number) => from + normalize(to - from) * progress;
 
@@ -35,10 +35,12 @@ export function getSceneFrame(world: WorldState): SceneFrame {
   const pitch = phone.pitch + (look.pitch - phone.pitch) * progress;
   const yaw = normalize((phone.placement === 'hand' ? bodyYaw + lookYaw : phone.fixedYaw) + (phone.mode === 'selfie' ? 180 : 0));
   const position: Point3 = phone.placement === 'hand'
-    ? [g.position.x + Math.sin(radians(bodyYaw)) * 0.55, 1.3 - bend * 0.45, g.position.z + Math.cos(radians(bodyYaw)) * 0.55]
+    // Bending brings the phone forward and down, out from behind her head, toward the thing she is working on.
+    ? [g.position.x + Math.sin(radians(bodyYaw)) * (0.55 + bend * 0.15), 1.3 - bend * 0.55, g.position.z + Math.cos(radians(bodyYaw)) * (0.55 + bend * 0.15)]
     : [OBJECTS.dry_spot.position.x, 1.32, OBJECTS.dry_spot.position.z];
   // Opposite lenses share one physical phone pose, including pitch.
-  const rearPitch = phone.placement === 'hand' ? pitch - 12 : -Math.atan(0.18) * 180 / Math.PI;
+  // A handheld phone naturally tilts down toward what Grandma is working on (tables, the pipe).
+  const rearPitch = phone.placement === 'hand' ? pitch - 22 - bend * 20 : -Math.atan(0.18) * 180 / Math.PI;
   const lensPitch = radians(phone.mode === 'selfie' ? -rearPitch : rearPitch);
   const target: Point3 = [position[0] + Math.sin(radians(yaw)) * Math.cos(lensPitch), position[1] + Math.sin(lensPitch), position[2] + Math.cos(radians(yaw)) * Math.cos(lensPitch)];
   let name: AnimationName = g.posture === 'bent' ? 'Idle_Bent' : 'Idle_Standing';
@@ -56,9 +58,8 @@ export function getSceneFrame(world: WorldState): SceneFrame {
       case 'place_phone': name = 'Phone_Place'; break;
       case 'retrieve_phone': name = 'Phone_Retrieve'; break;
       case 'switch_camera': name = 'Phone_Check'; break;
-      case 'rotate': name = active?.target === 'supply_valve' ? 'Rotate_Valve' : 'Tighten_Joint'; break;
-      case 'apply_patch': name = 'Apply_Patch'; break;
-      case 'secure_patch': name = 'Secure_Clamp'; break;
+      case 'rotate': name = 'Tighten_Joint'; break;
+      case 'open': name = 'Open_Toolbox'; break;
     }
   }
   const ratio = world.water / TUNING.floodThreshold;
@@ -74,6 +75,6 @@ export function getSceneFrame(world: WorldState): SceneFrame {
       const item = world.items[o.id as ItemId];
       return [o.id, item ? [item.position.x, item.height, item.position.z] : [o.position.x, o.height, o.position.z]];
     })) as Record<ObjectId, Point3>,
-    effects: { waterHeight: 0.015 + ratio * 0.3, waterRatio: ratio, leakRatio: world.leakRate / TUNING.initialLeakPerSecond, patchApplied: world.patchApplied, bucketUsed: world.bucketUsed, towelsUsed: world.towelUsed, bucketFill: world.bucketUsed ? 1 - world.bucketRemaining / TUNING.bucketCapacity : 0, towelSaturation: world.towelUsed ? 1 - world.towelRemaining / TUNING.towelCapacity : 0 },
+    effects: { waterHeight: 0.015 + ratio * 0.3, waterRatio: ratio, leakRatio: world.leakRate / TUNING.initialLeakPerSecond, openToolboxes: (Object.keys(world.toolboxes) as ToolboxId[]).filter(box => world.toolboxes[box].open), bucketUsed: world.bucketUsed, towelsUsed: world.towelUsed, bucketFill: world.bucketUsed ? 1 - world.bucketRemaining / TUNING.bucketCapacity : 0, towelSaturation: world.towelUsed ? 1 - world.towelRemaining / TUNING.towelCapacity : 0 },
   };
 }

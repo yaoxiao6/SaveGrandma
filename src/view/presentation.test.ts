@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../game/controller';
 import { getSceneFrame } from './presentation';
-import { PRESETS } from '../game/presets';
+import { FIND_WRENCH, PRESETS } from '../game/presets';
 import { lensYaw } from '../game/phone';
 import type { Action } from '../game/types';
 
@@ -67,15 +67,16 @@ describe('Jeff’s presentation contract and phone camera', () => {
     expect(t.frame().phone).toEqual(fixed);
   });
   it('exposes stable anchors and inventory hand slots independently of model choice', () => {
-    const t = setup(); for (const action of PRESETS.wrench.actions.slice(0, 3)) t.send(action); t.simulation.advance(10);
+    const t = setup(); for (const action of FIND_WRENCH) t.send(action); t.simulation.advance(12);
     expect(t.frame().character.hands).toEqual({ left: 'phone', right: 'wrench' });
+    expect(t.frame().effects.openToolboxes).toEqual(['red_toolbox', 'blue_toolbox', 'green_toolbox']);
     expect(t.frame().anchors.pipe_joint).toEqual([-1.3, 0.45, 4.6]);
     const snapshot = t.simulation.readState(); getSceneFrame(snapshot); expect(t.simulation.readState()).toEqual(snapshot);
   });
   it('freezes animation time in pause and switches to a terminal cue on success', () => {
-    const t = setup(); for (const action of PRESETS.valve.actions) t.send(action); t.simulation.advance(0.3);
+    const t = setup(); for (const action of PRESETS.wrench.actions) t.send(action); t.simulation.advance(0.3);
     t.controller.pause(); const paused = t.frame(); t.simulation.advance(20);
     expect(t.frame()).toEqual(paused); expect(paused.character.animation.playing).toBe(false);
-    t.controller.resume(); t.simulation.advance(20); expect(t.frame().character.animation.name).toBe('Relief');
+    t.controller.resume(); t.simulation.advance(40); expect(t.frame().character.animation.name).toBe('Relief');
   });
 });

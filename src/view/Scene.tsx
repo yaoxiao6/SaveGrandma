@@ -18,8 +18,8 @@ function Tool({ id }: { id: ItemId }) {
   if (SCENE_VISUALS.Tool) return <SCENE_VISUALS.Tool id={id} />;
   switch (id) {
     case 'wrench': return <group rotation={[Math.PI / 2, 0, 0]}><Box position={[0, 0, 0]} size={[0.06, 0.32, 0.04]} color={colors.metal} /><Box position={[0.06, 0.17, 0]} size={[0.08, 0.13, 0.05]} color={colors.metal} /><Box position={[-0.06, 0.17, 0]} size={[0.08, 0.13, 0.05]} color={colors.metal} /></group>;
-    case 'patch': return <Box position={[0, 0.025, 0]} size={[0.25, 0.04, 0.17]} color="#303d3a" />;
-    case 'clamp': return <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[0.105, 0.025, 8, 16]} /><meshStandardMaterial color="#a1aeb0" metalness={0.5} roughness={0.4} /></mesh>;
+    case 'screwdriver': return <group rotation={[Math.PI / 2, 0, 0]}><Box position={[0, 0.07, 0]} size={[0.035, 0.14, 0.035]} color="#e8b64a" /><Box position={[0, -0.07, 0]} size={[0.012, 0.16, 0.012]} color="#9aa7aa" /></group>;
+    case 'hammer': return <group rotation={[Math.PI / 2, 0, 0]}><Box position={[0, 0, 0]} size={[0.03, 0.3, 0.03]} color="#a97845" /><Box position={[0, 0.15, 0]} size={[0.14, 0.06, 0.06]} color="#6b6f73" /></group>;
     case 'towels': return <group>{[0, 1, 2].map(i => <Box key={i} position={[0, i * 0.055, 0]} size={[0.44, 0.055, 0.28]} color={i % 2 ? '#f1d5b9' : colors.peach} />)}</group>;
     case 'bucket': return <group><mesh position={[0, 0.02, 0]}><cylinderGeometry args={[0.23, 0.17, 0.38, 16, 1, true]} /><meshStandardMaterial color="#73a9bc" side={2} /></mesh><mesh position={[0, -0.15, 0]}><cylinderGeometry args={[0.17, 0.17, 0.025, 16]} /><meshStandardMaterial color="#73a9bc" /></mesh></group>;
   }
@@ -86,11 +86,9 @@ function Bathroom({ world }: { world: WorldState }) {
     <Box position={[-0.9, 1.13, 4.94]} size={[1.8, 0.2, 0.65]} color="#fcf7e9" />
     <Box position={[-0.9, 1.26, 5]} size={[1.15, 0.08, 0.5]} color="#c4d0c7" />
     <Box position={[-0.9, 1.36, 5.12]} size={[0.09, 0.35, 0.1]} color={colors.metal} />
-    <Box position={[-0.95, 0.48, 4.69]} size={[1.22, 0.09, 0.09]} color={colors.brass} />
-    <Box position={[-0.65, 0.76, 4.69]} size={[0.09, 0.55, 0.09]} color={colors.brass} />
-    <mesh name="supply_valve" position={[-0.65, 0.95, 4.59]}><torusGeometry args={[0.14, 0.027, 8, 16]} /><meshStandardMaterial color="#b65041" /></mesh>
-    <Box position={[-0.65, 0.95, 4.59]} size={[0.23, 0.035, 0.035]} color="#b65041" />
-    <Box position={[-1.3, 0.48, 4.69]} size={[0.18, 0.17, 0.16]} color={world.patchApplied ? '#3e504a' : '#ceaa6c'} />
+    <Box position={[-0.95, 0.48, 4.69]} size={[1.22, 0.09, 0.09]} color="#b65041" />
+    <Box position={[-0.3, 0.72, 4.69]} size={[0.09, 0.5, 0.09]} color="#b65041" />
+    <Box position={[-1.3, 0.48, 4.69]} size={[0.18, 0.17, 0.16]} color="#8f3426" />
     {world.leakRate > 0 && <mesh position={[-1.3, 0.24, 4.64]}><cylinderGeometry args={[0.012, 0.08 * world.leakRate / TUNING.initialLeakPerSecond, 0.48, 8]} /><meshStandardMaterial color="#8ac9d6" transparent opacity={0.7} /></mesh>}
     <Box position={[0.22, 0.75, 2.5]} size={[1.95, 0.08, 0.55]} color="#b2bda8" />
     {[-0.58, 1].map(x => <Box key={x} position={[x, 0.37, 2.5]} size={[0.08, 0.75, 0.38]} color="#a7b29e" />)}

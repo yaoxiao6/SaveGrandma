@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { CanvasTexture, InstancedMesh, Object3D, RepeatWrapping, SRGBColorSpace } from 'three';
 import { OBJECTS } from '../game/config';
 import type { SceneFrame } from '../view/presentation';
+import type { ToolboxId } from '../game/types';
 
 /**
  * Procedural bathroom inspired by the team mockup: white upper tiles over a blue
@@ -12,7 +13,8 @@ import type { SceneFrame } from '../view/presentation';
  */
 const C = {
   whiteTile: '#f3f1ea', blueTile: '#5ea1d6', floorTile: '#4f93cc', grout: '#c9d6e2', floorGrout: '#3a74a8',
-  trim: '#d9e4ee', porcelain: '#fbfbf7', chrome: '#b9c3c8', brass: '#b69055', cream: '#efe3c8', navy: '#3d5a8a', water: '#7cc0e6',
+  trim: '#d9e4ee', porcelain: '#fbfbf7', chrome: '#b9c3c8', brass: '#b69055', cream: '#efe3c8', navy: '#3d5a8a', water: '#7cc0e6', redPipe: '#c9412f',
+  toolbox: { red_toolbox: '#c9412f', blue_toolbox: '#2f6fc9', green_toolbox: '#3a9a4e' } as Record<ToolboxId, string>,
 } as const;
 const TILE = 0.3;
 const WAINSCOT = 1.15;
@@ -168,7 +170,7 @@ function Toilet() {
 function Vanity({ frame }: { frame: SceneFrame }) {
   const x = -0.9; // Sink anchor from the creative handoff (-0.9, 1.13, 4.94)
   const joint = frame.anchors.pipe_joint;
-  const valve = frame.anchors.supply_valve;
+  const riserX = -0.3;
   return <group>
     {/* Wall-hung counter keeps the supply pipe and leaking joint in view */}
     <Box position={[x, 1.08, 5.08]} size={[1.8, 0.1, 0.64]} color={C.porcelain} rough={0.3} />
@@ -187,16 +189,12 @@ function Vanity({ frame }: { frame: SceneFrame }) {
     {/* Towel ring and towel */}
     <mesh position={[x + 1.05, 1.9, 5.34]} rotation={[0, 0, 0]}><torusGeometry args={[0.09, 0.012, 8, 20]} /><meshStandardMaterial color={C.chrome} metalness={0.9} roughness={0.25} /></mesh>
     <Box position={[x + 1.05, 1.58, 5.31]} size={[0.26, 0.5, 0.05]} color="#3f8fd2" rough={1} />
-    {/* Supply line: riser from the valve, horizontal run to the leaking joint */}
-    <Cyl position={[valve[0], (valve[1] + 0.48) / 2 + 0.1, 4.69]} radius={0.04} height={valve[1] - 0.48 + 0.3} color={C.brass} metal={0.6} rough={0.4} segments={10} />
-    <Cyl position={[(valve[0] + joint[0] - 0.3) / 2, 0.48, 4.69]} radius={0.04} height={Math.abs(valve[0] - joint[0]) + 0.3} color={C.brass} rotation={[0, 0, Math.PI / 2]} metal={0.6} rough={0.4} segments={10} />
-    <Cyl position={[joint[0], 0.48, (4.69 + 5.4) / 2]} radius={0.035} height={0.7} color={C.brass} rotation={[Math.PI / 2, 0, 0]} metal={0.6} rough={0.4} segments={10} />
-    {/* Red hand wheel */}
-    <mesh name="supply_valve" position={[valve[0], valve[1], 4.59]}><torusGeometry args={[0.14, 0.027, 8, 18]} /><meshStandardMaterial color="#c24d3c" roughness={0.5} /></mesh>
-    <Box position={[valve[0], valve[1], 4.59]} size={[0.24, 0.035, 0.035]} color="#c24d3c" rough={0.5} />
-    <Box position={[valve[0], valve[1], 4.59]} size={[0.035, 0.24, 0.035]} color="#c24d3c" rough={0.5} />
-    {/* Leaking joint; darkens when the rubber patch is wrapped on */}
-    <Box position={[joint[0], 0.48, 4.69]} size={[0.2, 0.18, 0.17]} color={frame.effects.patchApplied ? '#3e504a' : '#d1ad6b'} metal={frame.effects.patchApplied ? 0 : 0.5} rough={frame.effects.patchApplied ? 1 : 0.4} />
+    {/* The red supply pipe: down from the sink, along the wall, into the leaking joint */}
+    <Cyl position={[riserX, 0.72, 4.69]} radius={0.04} height={0.5} color={C.redPipe} metal={0.3} rough={0.45} segments={10} />
+    <Cyl position={[(riserX + joint[0]) / 2, 0.48, 4.69]} radius={0.04} height={Math.abs(riserX - joint[0]) + 0.08} color={C.redPipe} rotation={[0, 0, Math.PI / 2]} metal={0.3} rough={0.45} segments={10} />
+    <Cyl position={[joint[0], 0.48, (4.69 + 5.4) / 2]} radius={0.035} height={0.7} color={C.redPipe} rotation={[Math.PI / 2, 0, 0]} metal={0.3} rough={0.45} segments={10} />
+    {/* Leaking joint: a loose red coupling with a hex nut Grandma can tighten */}
+    <Cyl position={[joint[0], 0.48, 4.69]} radius={0.075} height={0.2} color={frame.effects.leakRatio > 0 ? '#8f3426' : C.redPipe} rotation={[0, 0, Math.PI / 2]} metal={0.4} rough={0.4} segments={6} />
     {frame.effects.leakRatio > 0 && <>
       {/* Spray bursting out of the joint toward the room, plus a running stream down to the puddle */}
       <mesh position={[joint[0], 0.24, 4.64]}><cylinderGeometry args={[0.012, 0.08 * frame.effects.leakRatio, 0.48, 8]} /><meshStandardMaterial color="#8ac9d6" transparent opacity={0.7} depthWrite={false} /></mesh>
@@ -223,10 +221,21 @@ function Door() {
 function Furniture({ frame }: { frame: SceneFrame }) {
   const shelf = OBJECTS.dry_spot.position;
   return <group>
-    {/* Tool trolley; the tools themselves render from simulation state */}
-    <Box position={[0.22, 0.75, 2.5]} size={[1.95, 0.06, 0.55]} color={C.porcelain} rough={0.4} />
-    <Box position={[0.22, 0.3, 2.5]} size={[1.9, 0.04, 0.5]} color="#e3e9ef" rough={0.5} />
-    {[-0.68, 1.12].map(x => [-0.22, 0.22].map(z => <Cyl key={`${x}${z}`} position={[x, 0.4, 2.5 + z]} radius={0.02} height={0.8} color={C.chrome} metal={0.8} rough={0.3} segments={8} />))}
+    {/* Work table against the right wall with three toolboxes; the tools inside render from simulation state once a lid is open */}
+    <Box position={[1.95, 0.72, 2.4]} size={[0.7, 0.05, 1.5]} color="#d8b98a" rough={0.7} />
+    <Box position={[1.95, 0.66, 2.4]} size={[0.64, 0.07, 1.44]} color="#b8945f" rough={0.8} />
+    {[1.68, 2.22].map(x => [1.75, 3.05].map(z => <Cyl key={`${x}${z}`} position={[x, 0.33, z]} radius={0.025} height={0.66} color="#8a6a3e" rough={0.8} segments={8} />))}
+    {(Object.keys(C.toolbox) as ToolboxId[]).map(id => {
+      const box = OBJECTS[id].position; const open = frame.effects.openToolboxes.includes(id);
+      return <group key={id} name={id}>
+        <Box position={[box.x, 0.81, box.z]} size={[0.42, 0.13, 0.3]} color={C.toolbox[id]} rough={0.5} metal={0.2} />
+        <Box position={[box.x, 0.81, box.z]} size={[0.36, 0.1, 0.24]} color="#2b2f33" rough={0.9} />
+        <group position={[box.x + 0.21, 0.885, box.z]} rotation={[0, 0, open ? 1.9 : 0]}>
+          <Box position={[-0.21, 0.02, 0]} size={[0.42, 0.04, 0.3]} color={C.toolbox[id]} rough={0.5} metal={0.2} />
+          <Cyl position={[-0.21, 0.06, 0]} radius={0.012} height={0.12} color="#2b2f33" rotation={[Math.PI / 2, 0, 0]} rough={0.8} segments={8} />
+        </group>
+      </group>;
+    })}
     {/* Dry shelf for the phone: a tall stand with a green accent so it reads as the safe spot */}
     <Box position={[shelf.x, 1.11, shelf.z]} size={[0.6, 0.07, 0.5]} color="#6f9a7f" rough={0.5} />
     <Box position={[shelf.x, 1.15, shelf.z]} size={[0.56, 0.015, 0.46]} color="#8cb89a" rough={0.6} />

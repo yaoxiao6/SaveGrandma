@@ -89,8 +89,8 @@ Events are delivered synchronously after a controller mutation completes, includ
 | `bend`, `stand` | changes posture; never implicit in other actions |
 | `grab` | `target`; one free hand and correct posture required |
 | `place` | `item`, `target: dry_spot/puddle`; uses held item, towels/bucket at puddle provide bounded mitigation |
-| `rotate` | `target`, `direction: clockwise/counterclockwise`; omission asks for clarification |
-| `apply_patch`, `secure_patch` | `target: { id: 'pipe_joint' }`; two hands, appropriate item, bend, reach; clamp requires applied patch |
+| `rotate` | `target: { id: 'pipe_joint' }`, `direction: clockwise/counterclockwise`; needs the wrench in hand; omission asks for clarification |
+| `open` | `target`: one of the three toolboxes; reveals the tool inside (`NOT_FOUND` explains a tool that is still shut away) |
 | `wait` | `seconds: 0.1–600`; water keeps rising |
 
 All directional actions default to `frame: 'grandma'`. At yaw 0 Grandma faces +Z; her left is +X. Camera-relative movement uses the active lens’s horizontal forward axis. The selfie lens points opposite the rear lens, so `move forward` in the selfie camera frame moves behind Grandma. `turn` with the camera frame turns Grandma to the lens heading plus the requested signed angle. A shelf-mounted camera’s frame stays fixed even as she turns or moves.
@@ -101,7 +101,7 @@ Horizontal `look` in Grandma’s frame aims relative to her body; repeated `look
 
 ```ts
 // Precise: no random interpretation failure.
-{ runId, action: { type: 'rotate', target: { id: 'supply_valve' }, direction: 'clockwise' } }
+{ runId, action: { type: 'open', target: { id: 'red_toolbox' } } }
 
 // Description lookup uses an authored vocabulary, not natural-language parsing.
 { runId, action: { type: 'rotate', target: { description: 'fitting' }, direction: 'clockwise' }, unresolved: ['target'] }
@@ -110,12 +110,12 @@ Horizontal `look` in Grandma’s frame aims relative to her body; repeated `look
 { runId, action: { type: 'rotate', target: { description: 'fitting', qualifiers: { color: 'red' } }, direction: 'clockwise' } }
 
 // The teammate can explicitly supply plausible reference candidates.
-{ runId, action: { type: 'grab', target: { candidates: ['wrench', 'clamp'] } }, unresolved: ['target'] }
+{ runId, action: { type: 'grab', target: { candidates: ['wrench', 'hammer'] } }, unresolved: ['target'] }
 ```
 
-IDs: `supply_valve`, `pipe_joint`, `wrench`, `patch`, `clamp`, `towels`, `bucket`, `dry_spot`, `puddle`.
+IDs: `pipe_joint`, `red_toolbox`, `blue_toolbox`, `green_toolbox`, `wrench`, `screwdriver`, `hammer`, `towels`, `bucket`, `dry_spot`, `puddle`. The three tools are dealt into the three toolboxes per seed; a tool only appears in `surroundings` once its box is open.
 
-Example exact description aliases: `valve`, `red valve`, `joint`, `pipe`, `fitting` (valve/joint), `tool` (wrench/clamp), `towels`, `bucket`, `patch`, `shelf`, `water`. Unsupported descriptions ask for clarification. The voice teammate normalizes language to IDs or these aliases. Qualifiers currently support `color` only; use `unresolved` for remaining details. An explicit ID takes precedence over a description/candidate list; a contradictory color asks for clarification.
+Example exact description aliases: `pipe`, `red pipe`, `joint`, `fitting`, `toolbox`/`box` (any of the three; add a color qualifier), `tool` (wrench/screwdriver/hammer), `towels`, `bucket`, `shelf`, `water`. Unsupported descriptions ask for clarification. The voice teammate normalizes language to IDs or these aliases. Qualifiers currently support `color` only; use `unresolved` for remaining details. An explicit ID takes precedence over a description/candidate list; a contradictory color asks for clarification.
 
 Non-target unresolved fields, such as `direction`, always ask. Multiple visible plausible targets trigger a seeded stress check: 15% low, 30% medium, 45% high. A mistake chooses a candidate other than the nearest/context-primary target, emits `misunderstanding`, then undergoes normal prerequisite checks; it may fail or complete on that object. Otherwise the game asks which target was intended. One plausible candidate is reliable. No plausible candidate asks. A fully specified instruction is never randomly corrupted, including at high stress.
 

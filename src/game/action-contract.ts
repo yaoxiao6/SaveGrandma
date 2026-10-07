@@ -16,11 +16,11 @@ type Schema = {
 const text = (maxLength = 200): Schema => ({ type: 'string', maxLength });
 const choice = (...values: string[]): Schema => ({ type: 'string', enum: values });
 const object = (properties: Record<string, Schema>, required: string[]): Schema => ({ type: 'object', properties, required, additionalProperties: false });
-const objectId = choice('supply_valve', 'pipe_joint', 'wrench', 'patch', 'clamp', 'towels', 'bucket', 'dry_spot', 'puddle');
+const objectId = choice('pipe_joint', 'red_toolbox', 'blue_toolbox', 'green_toolbox', 'wrench', 'screwdriver', 'hammer', 'towels', 'bucket', 'dry_spot', 'puddle');
 const target = object({
   id: objectId,
   description: text(),
-  candidates: { type: 'array', items: objectId, maxItems: 9 },
+  candidates: { type: 'array', items: objectId, maxItems: 11 },
   qualifiers: object({ color: text(30) }, []),
 }, []);
 const direction = choice('forward', 'backward', 'left', 'right');
@@ -38,10 +38,9 @@ const actions = {
   bend: action('bend'),
   stand: action('stand'),
   grab: action('grab', { target }, ['target']),
-  place: action('place', { target, item: choice('wrench', 'patch', 'clamp', 'towels', 'bucket') }, ['target', 'item']),
+  place: action('place', { target, item: choice('wrench', 'screwdriver', 'hammer', 'towels', 'bucket') }, ['target', 'item']),
   rotate: action('rotate', { target, direction: choice('clockwise', 'counterclockwise') }, ['target']),
-  apply_patch: action('apply_patch', { target }, ['target']),
-  secure_patch: action('secure_patch', { target }, ['target']),
+  open: action('open', { target }, ['target']),
   wait: action('wait', { seconds: { type: 'number', minimum: 0.1, maximum: 600 } }, ['seconds']),
 } satisfies Record<Action['type'], Schema>;
 

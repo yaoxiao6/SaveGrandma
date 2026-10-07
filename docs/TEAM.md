@@ -23,7 +23,7 @@ Acceptance: speak the wrench solution end-to-end; interrupt during movement; let
 1. Read [CREATIVE.md](CREATIVE.md).
 2. Add components in `src/creative/` and register whichever are ready in `SCENE_VISUALS`: `Grandma`, `Environment`, `Tool`. Unregistered slots retain the placeholders. Use known asset licenses and record provenance next to added files.
 3. Animate from `SceneFrame.character.animation`; attach objects from `character.hands`; use `anchors` and `effects` for room state. The root position/yaw and phone camera stay controlled by the game.
-4. Run the three solution presets, especially patch/clamp with the camera left on the shelf. Check cancelled interactions, bent posture and pause behavior.
+4. Run the wrench preset and the wrong-tool preset; check toolbox lids opening, tools appearing, cancelled interactions, bent posture and pause behavior.
 
 Acceptance: a new model or animation changes presentation without changing action timing, object identity, reach, hand checks or solution outcomes. Authored clips, asset loading, lip sync and audio are not implemented by the placeholder render layer.
 
