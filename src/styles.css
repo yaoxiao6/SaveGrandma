@@ -131,3 +131,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   .call-card { padding: 24px 20px; }
   .call-card h2 { font-size: 28px; }
 }
+
+/* Voice captions (Yao) */
+.caption-text { min-width: 0; }
+.caption p.you-said { font-size: 11px; color: #96a18a; margin-top: 4px; }
+.caption p.voice-error { font-size: 11px; color: #bb6249; margin-top: 4px; }
+.voice-status.speaking .wave { color: #d28c55; }

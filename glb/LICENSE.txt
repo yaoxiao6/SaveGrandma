@@ -1,0 +1,20 @@
+Asset provenance
+
+Filename: bathroom scene 3d model.glb
+Creator: Jeff Miao (confirmed by the contributor).
+Generator: Tripo (confirmed by the contributor and GLB asset.generator metadata).
+License: Not supplied; confirmation pending. This file does not grant a license.
+Source URL: Not supplied; confirmation pending.
+
+The GLB contains no embedded author, copyright, license, or source URL.
+SHA-256: b57340cbf0b1d0bc9b176bf163ea6c3eb42828c5dc48618b9d5cfacf109533a1
+
+Filename: grandma.glb
+Contributor: Jeff Miao.
+Creator: Not supplied; confirmation pending.
+Generator: Tripo (recorded in the GLB asset.generator metadata).
+License: Not supplied; confirmation pending. This file does not grant a license.
+Source URL: Not supplied; confirmation pending.
+
+The GLB contains no embedded author, copyright, license, or source URL.
+SHA-256: 160a30752ea1752bafe6c42577bf996706cf3e186495ac6943350761cfb2d522

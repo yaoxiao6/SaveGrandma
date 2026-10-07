@@ -4,6 +4,8 @@ import Scene from './view/Scene';
 import StartScreen from './view/StartScreen';
 import Intro, { GREETING, RULES } from './view/Intro';
 import { EXAMPLES, parseInstruction } from './voice/text-commands';
+import { useVoice } from './voice/useVoice';
+import { speak } from './voice/grandma-voice';
 
 type Line = { id: number; who: 'you' | 'grandma' | 'note'; text: string };
 let lineSerial = 0;
@@ -16,8 +18,10 @@ export default function App() {
   const [lines, setLines] = useState<Line[]>([]);
   const [draft, setDraft] = useState('');
   const transcript = useRef<HTMLDivElement>(null);
+  // Yao's realtime voice agent. Connects when Grandma's greeting begins; typed text stays as a fallback.
+  const voice = useVoice();
+  const { setMute, notify } = voice;
   const say = (who: Line['who'], text: string) => setLines(old => [...old, line(who, text)].slice(-40));
-
   useEffect(() => gameController.subscribe(event => {
     if (event.type === 'state_changed') setWorld(simulation.readState());
     if (event.type === 'action_result' && event.result.status !== 'cancelled') say('grandma', event.result.message);
@@ -40,6 +44,17 @@ export default function App() {
 
   const running = world.stage === 'running';
   const terminal = world.stage === 'won' || world.stage === 'lost';
+  // Pausing (button or hidden tab) silences the mic; game outcomes are fed back to Grandma.
+  useEffect(() => { if (world.stage === 'paused') setMute(true); else if (world.stage === 'running') setMute(false); }, [world.stage, setMute]);
+  useEffect(() => {
+    if (world.stage === 'won') notify('[The leak has stopped completely! React with huge relief and thank your grandchild.]');
+    if (world.stage === 'lost') notify('[The bathroom has flooded. React, sad but brave, and say goodbye.]');
+  }, [world.stage, notify]);
+  const voiceLabel = voice.status === 'connected' ? (voice.muted ? 'Microphone muted' : voice.speaking ? 'Grandma is talking' : 'Listening…') : voice.status === 'microphone' ? 'Allow the microphone…' : voice.status === 'connecting' ? 'Connecting voice…' : voice.status === 'error' ? 'Voice unavailable' : 'Voice off';
+  // Mirror the live conversation into the transcript; fall back to synthesized speech if voice is unavailable.
+  useEffect(() => { if (voice.grandmaSaid) say('grandma', voice.grandmaSaid); }, [voice.grandmaSaid]);
+  useEffect(() => { if (voice.youSaid) say('you', voice.youSaid); }, [voice.youSaid]);
+  useEffect(() => { if (voice.error) say('note', voice.error); if (voice.status === 'error' && intro === 'playing') void speak(GREETING); }, [voice.error, voice.status, intro]);
   const elapsed = `${Math.floor(world.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(world.elapsed % 60).toString().padStart(2, '0')}`;
 
   // PLACEHOLDER for Yao's voice agent: typed text stands in for speech, then flows through the same command session.
@@ -57,7 +72,7 @@ export default function App() {
       if (outcome.status === 'rejected') say('note', outcome.code === 'NOT_RUNNING' ? 'Answer the call first.' : `Could not send that (${outcome.code}).`);
     });
   };
-  const restart = () => { gameController.reset(); gameController.start(); setLines([line('grandma', GREETING)]); };
+  const restart = () => { voice.disconnect(); gameController.reset(); gameController.start(); setLines([]); void voice.connect(); };
 
   return <>
     {!started && <StartScreen onStart={() => { setStarted(true); setIntro('playing'); }} />}
@@ -67,7 +82,7 @@ export default function App() {
 
         <div className="call-time"><span className={`dot ${running ? 'live' : ''}`} />{elapsed}</div>
         {intro === 'done' && <details className="objectives"><summary>Objectives</summary><ul>{RULES.map(rule => <li key={rule}>{rule}</li>)}</ul></details>}
-        {intro === 'playing' && <Intro onGreeting={() => say('grandma', GREETING)} onDone={() => gameController.start()} onFinished={() => setIntro('done')} />}
+        {intro === 'playing' && <Intro spoken={voice.grandmaSaid} onGreeting={() => { say('grandma', GREETING); void voice.connect(); }} onDone={() => gameController.start()} onFinished={() => setIntro('done')} />}
         {world.stage === 'paused' && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">TAKE A BREATH</span><h2>Call paused.</h2><p>The water and Grandma’s actions are paused.</p><button className="primary" onClick={() => gameController.resume()}>Resume call ↗</button></div></div>}
         {terminal && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">{world.stage === 'won' ? 'CRISIS AVERTED' : 'LET’S TRY THAT AGAIN'}</span><h2>{world.stage === 'won' ? 'You saved the day.' : 'A little too much water.'}</h2><p>{world.stage === 'won' ? 'The leak has stopped. Grandma can put the kettle on.' : 'The bathroom flooded before the leak was stopped.'}</p><button className="primary" onClick={restart}>Start a new call ↗</button></div></div>}
 
@@ -76,8 +91,7 @@ export default function App() {
             {lines.map(l => <p key={l.id} className={l.who}>{l.who === 'you' ? 'You' : l.who === 'grandma' ? 'Grandma' : ''}{l.who !== 'note' && <b> · </b>}{l.text}</p>)}
           </div>
           {world.active && <div className="progress" aria-hidden="true"><i style={{ width: `${world.active.elapsed / world.active.duration * 100}%` }} /></div>}
-          {/* Voice input placeholder: Yao wires this to the voice agent. */}
-          <button type="button" className="mic" aria-label="Voice input (coming soon)" title="Voice agent coming soon" disabled><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg></button>
+          <button type="button" className={`mic ${voice.status} ${voice.speaking ? 'speaking' : ''} ${voice.muted ? 'muted' : ''}`} aria-label={voiceLabel} title={voiceLabel} disabled={voice.status === 'microphone' || voice.status === 'connecting'} onClick={() => voice.status === 'connected' ? setMute(!voice.muted) : void voice.connect()}><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg></button>
           <form className="composer" onSubmit={send}>
             <input aria-label="Tell Grandma what to do" placeholder={running ? 'Tell Grandma…' : 'Connecting…'} value={draft} onChange={e => setDraft(e.target.value)} autoComplete="off" disabled={!running} enterKeyHint="send" />
           </form>
