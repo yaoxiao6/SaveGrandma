@@ -130,7 +130,13 @@ export function useVoice() {
   const setMute = useCallback((value: boolean) => { session.current?.mute(value); setMuted(value); }, []);
 
   /** Grandma speaks first; the intro calls this once the phone has stopped ringing. Her instructions say how to open the call. */
-  const greet = useCallback(() => { session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
+  const greet = useCallback(() => {
+    session.current?.transport.sendEvent({ type: 'response.create', response: {
+      instructions: 'Open the call with ONE short, frantic sentence of at most 15 words: you are in the bathroom and water is pouring out from under the sink. Do not call any tools and do not describe the room. Then stop and wait for the caller.',
+    } });
+  }, []);
+  /** Cut Grandma off mid-sentence (intro time cap, barge-in). */
+  const hush = useCallback(() => { session.current?.interrupt(); }, []);
 
   /** Tell Grandma about something that happened outside a tool call, e.g. the leak stopping. */
   const notify = useCallback((text: string) => { session.current?.sendMessage(text); }, []);
@@ -140,7 +146,7 @@ export function useVoice() {
   useEffect(() => () => { stopSpeaking(); session.current?.close(); session.current = null; releaseMicrophone(); }, []);
 
   /** End of the player's turn: Grandma answers whatever was said and acts on it. */
-  const respond = greet;
+  const respond = useCallback(() => { session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
 
-  return { status, error, grandmaSaid, youSaid, speaking, muted, connect, disconnect, setMute, notify, greet, respond };
+  return { status, error, grandmaSaid, youSaid, speaking, muted, connect, disconnect, setMute, notify, greet, respond, hush };
 }

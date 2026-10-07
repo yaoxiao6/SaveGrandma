@@ -14,12 +14,12 @@ export const RULES = [
 const RINGTONE = '/audio/iphone-ringtone.mp3';
 const FALLBACK_GREETING_SECONDS = 6;
 const MAX_CONNECT_WAIT_SECONDS = 12;
-const MAX_GREETING_SECONDS = 25;
-const RULES_SECONDS = 3;
+const MAX_GREETING_SECONDS = 7;
+const RULES_SECONDS = 4;
 const FADE_SECONDS = 0.7;
 
 type Phase = 'ringing' | 'greeting' | 'rules' | 'fade-out' | 'fade-in';
-export type IntroVoice = { status: VoiceStatus; speaking: boolean; grandmaSaid: string; greet: () => void };
+export type IntroVoice = { status: VoiceStatus; speaking: boolean; grandmaSaid: string; greet: () => void; hush?: () => void };
 
 export function RulesList({ className }: { className: string }) {
   return <div className={className}><h3>How to save Grandma</h3><ul>{RULES.map(rule => <li key={rule}>{rule}</li>)}</ul></div>;
@@ -69,8 +69,9 @@ export default function Intro({ voice, onGreeting, onDone, onFinished }: { voice
     if (phase !== 'greeting') return;
     if (!live.current) { const t = window.setTimeout(() => setPhase('rules'), FALLBACK_GREETING_SECONDS * 1000); return () => clearTimeout(t); }
     if (voice.speaking) hasSpoken.current = true;
-    const delay = hasSpoken.current && !voice.speaking ? 0.8 : MAX_GREETING_SECONDS;
-    const t = window.setTimeout(() => setPhase('rules'), delay * 1000);
+    const finished = hasSpoken.current && !voice.speaking;
+    // Keep the opening tight: if Grandma is still going at the cap, cut her off and move on.
+    const t = window.setTimeout(() => { if (!finished) voice.hush?.(); setPhase('rules'); }, (finished ? 0.8 : MAX_GREETING_SECONDS) * 1000);
     return () => clearTimeout(t);
   }, [phase, voice.speaking]);
 
