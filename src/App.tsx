@@ -8,6 +8,8 @@ import { speak } from './voice/grandma-voice';
 import { EXAMPLES, parseInstruction } from './voice/text-commands';
 import { useVoice } from './voice/useVoice';
 import { useIntroMusic } from './view/intro-music';
+import { useLeakSound } from './view/leak-sound';
+import { TUNING } from './game/config';
 import { PLAYER_TURN_SECONDS, useTurns } from './view/useTurns';
 
 type Line = { id: number; who: 'you' | 'grandma' | 'note'; text: string };
@@ -24,6 +26,8 @@ export default function App() {
   // Yao's realtime voice agent. Connects when Grandma's greeting begins; typed text stays as a fallback.
   const voice = useVoice();
   useIntroMusic(started ? 'off' : 'title');
+  // Water keeps dripping as long as the leak flows during a live call; louder after a wrong turn.
+  useLeakSound(world.stage === 'running' && world.leakRate > 0, world.leakRate / TUNING.initialLeakPerSecond);
   const { setMute } = voice;
   const say = (who: Line['who'], text: string) => setLines(old => [...old, line(who, text)].slice(-40));
   useEffect(() => gameController.subscribe(event => {

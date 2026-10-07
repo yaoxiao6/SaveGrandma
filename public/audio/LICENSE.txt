@@ -4,3 +4,8 @@ Filename: buant-two-step.mp3
 Title: Buant Two-Step
 Supplied by: the project owner (gibumkang) on 2026-10-07 for the title screen.
 License / source URL: not recorded yet; confirm before public release.
+
+Filename: water-leak.mp3
+Title: Water Leak Sound Effect
+Supplied by: the project owner (gibumkang) on 2026-10-07 for the leak ambience.
+License / source URL: not recorded yet; confirm before public release.
