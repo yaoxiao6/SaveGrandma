@@ -61,13 +61,15 @@ export default function App() {
   const running = world.stage === 'running';
   const terminal = world.stage === 'won' || world.stage === 'lost';
   // Turns: the player speaks or types inside a short window, then Grandma answers and acts.
+  const speechAtTurnStart = useRef(0);
   const turns = useTurns({
     enabled: running && intro === 'done',
     busy: !!world.active || world.queue.length > 0,
     speaking: voice.speaking,
-    onPlayerTurnEnd: () => { if (voice.status === 'connected') voice.respond(); },
+    onPlayerTurnEnd: () => { if (voice.status === 'connected' && voice.speechEnded > speechAtTurnStart.current) voice.respond(); },
   });
   const playersTurn = turns.turn === 'player' && running && intro === 'done';
+  useEffect(() => { if (turns.turn === 'player') speechAtTurnStart.current = voice.speechEnded; /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [turns.turn]);
   // When the caller stops talking, the server commits their speech; that ends the turn with no button needed.
   useEffect(() => { if (voice.speechEnded && playersTurn) turns.endPlayerTurn(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [voice.speechEnded]);
   // The mic is open only during the player's turn, so input and output never overlap.
@@ -88,7 +90,7 @@ export default function App() {
     if (playersTurn) turns.endPlayerTurn(); else turns.startPlayerTurn();
   };
   // Mirror the live conversation into the transcript; fall back to synthesized speech if voice is unavailable.
-  useEffect(() => { if (voice.grandmaSaid) say('grandma', voice.grandmaSaid); }, [voice.grandmaSaid]);
+  useEffect(() => { if (voice.grandmaSaid) setLines(old => old.at(-1)?.who === 'grandma' && old.at(-1)?.text === voice.grandmaSaid ? old : [...old, line('grandma', voice.grandmaSaid)].slice(-40)); }, [voice.grandmaSaid]);
   useEffect(() => { if (voice.youSaid) say('you', voice.youSaid); }, [voice.youSaid]);
   // Voice errors stay in the console and on the mic button label; they are not part of the call transcript.
   const elapsed = `${Math.floor(world.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(world.elapsed % 60).toString().padStart(2, '0')}`;
