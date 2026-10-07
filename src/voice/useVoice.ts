@@ -55,6 +55,8 @@ export function useVoice() {
   const [speaking, setSpeaking] = useState(false);
   /** Increments each time the server decides the caller has finished speaking. Drives turn hand-off. */
   const [speechEnded, setSpeechEnded] = useState(0);
+  /** Increments when the caller starts talking. Used for barge-in: Grandma stops when you speak. */
+  const [speechStarted, setSpeechStarted] = useState(0);
   const responding = useRef(false);
   const [muted, setMuted] = useState(false);
 
@@ -111,6 +113,7 @@ export function useVoice() {
       setYouSaid(lastTranscript(history, 'user'));
     });
     s.on('transport_event', event => {
+      if (event.type === 'input_audio_buffer.speech_started') setSpeechStarted(n => n + 1);
       if (event.type === 'input_audio_buffer.committed') setSpeechEnded(n => n + 1);
       if (event.type === 'response.created') responding.current = true;
       if (event.type === 'response.done') responding.current = false;
@@ -163,5 +166,5 @@ export function useVoice() {
   /** End of the player's turn: Grandma answers whatever was said and acts on it. */
   const respond = useCallback(() => { if (responding.current) return; session.current?.transport.sendEvent({ type: 'response.create' }); }, []);
 
-  return { status, error, grandmaSaid, youSaid, speaking, speechEnded, muted, connect, disconnect, setMute, notify, sayLine, greet, respond, hush };
+  return { status, error, grandmaSaid, youSaid, speaking, speechStarted, speechEnded, muted, connect, disconnect, setMute, notify, sayLine, greet, respond, hush };
 }

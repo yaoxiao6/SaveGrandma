@@ -72,8 +72,16 @@ export default function App() {
   useEffect(() => { if (turns.turn === 'player') speechAtTurnStart.current = voice.speechEnded; /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [turns.turn]);
   // When the caller stops talking, the server commits their speech; that ends the turn with no button needed.
   useEffect(() => { if (voice.speechEnded && playersTurn) turns.endPlayerTurn(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [voice.speechEnded]);
-  // The mic is open only during the player's turn, so input and output never overlap.
-  useEffect(() => { setMute(!playersTurn); }, [playersTurn, setMute]);
+  // The mic stays open during a live call so you can barge in; the server never answers on its own.
+  const callLive = running && intro === 'done';
+  useEffect(() => { setMute(!callLive); }, [callLive, setMute]);
+  // Barge-in: when you start talking during Grandma's turn, she stops and the turn is yours.
+  useEffect(() => {
+    if (!voice.speechStarted || !callLive || turns.turn !== 'grandma') return;
+    voice.hush();
+    turns.startPlayerTurn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.speechStarted]);
   // Win and loss each have one fixed line from Grandma, spoken live when connected, synthesized otherwise.
   useEffect(() => {
     if (!terminal) return;
