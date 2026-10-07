@@ -151,9 +151,9 @@ describe('interpretation belongs to the simulation, without an autonomous solver
 });
 
 describe('phone and reference frames', () => {
-  it('starts on the rear camera and switches cameras', () => {
-    const t = setup(); expect(t.controller.getObservation().phone.mode).toBe('rear');
-    t.run({ type: 'switch_camera', mode: 'selfie' }); expect(t.controller.getObservation().phone.mode).toBe('selfie');
+  it('starts on the front camera (switching to the rear camera is part of the challenge)', () => {
+    const t = setup(); expect(t.controller.getObservation().phone.mode).toBe('selfie');
+    t.run({ type: 'switch_camera', mode: 'rear' }); expect(t.controller.getObservation().phone.mode).toBe('rear');
   });
   it('defaults to Grandma forward, while selfie-camera forward is behind her', () => {
     const a = setup(); a.run({ type: 'move', direction: 'forward', meters: 0.3 }); expect(a.sim.readState().grandma.position.z).toBeCloseTo(1.2);
@@ -209,7 +209,7 @@ describe('queue, lifecycle and ownership', () => {
     t.controller.reset({ seed: 99 }); t.controller.start();
     expect(t.controller.submitAction({ runId: old, action: { type: 'stand' } }).code).toBe('STALE_RUN');
     const s = t.sim.readState(); expect(s.seed).toBe(99); expect(s.water).toBe(0); expect(s.active).toBeNull(); expect(s.queue).toHaveLength(0);
-    expect(s.phone.mode).toBe('rear'); expect(s.grandma.held).toEqual([]); expect(s.items.wrench.position).toEqual(OBJECTS.wrench.position);
+    expect(s.phone.mode).toBe('selfie'); expect(s.grandma.held).toEqual([]); expect(s.items.wrench.position).toEqual(OBJECTS.wrench.position);
     expect(t.results().some(r => r.runId === old && r.code === 'CANCELLED')).toBe(true);
   });
   it('mutating a request or observation cannot change queued work or simulation', () => {

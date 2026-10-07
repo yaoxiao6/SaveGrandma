@@ -33,7 +33,7 @@ The automated Chrome launch was attempted again for the integration milestone, b
 
 ## Manual checks after browser access is available
 
-- The call opens on the rear camera showing the leaking pipe and dripping shower; the front camera shows Grandma and shares the phone position.
+- The call opens on the front camera showing Grandma; the rear camera shows the leaking pipe and dripping shower and shares the phone position.
 - Set phone on shelf, walk away and turn: camera stays fixed. Retrieve only within reach.
 - Apply-patch/clamp preset shows Grandma moving and bending while the phone stays on shelf.
 - Inspect tool visibility, interaction framing, water plane and terminal overlays at 1440×1100 and 390×844.

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { OpenAIRealtimeWebRTC, RealtimeSession, type RealtimeItem } from '@openai/agents/realtime';
 import { grandmaAgent } from './grandma';
 import { GRANDMA_SPEED, GRANDMA_VOICE, REALTIME_MODEL } from './model';
+import { ELEVENLABS_ENABLED, onSpeaking, speak, stopSpeaking } from './grandma-voice';
 
 export type VoiceStatus = 'idle' | 'microphone' | 'connecting' | 'connected' | 'error';
 
@@ -12,6 +13,21 @@ async function fetchClientSecret() {
   const data = await response.json().catch(() => ({})) as { value?: string; error?: string };
   if (!response.ok || !data.value) throw new Error(data.error ?? `Token request failed (${response.status}).`);
   return data.value;
+}
+
+// With ElevenLabs, the model only writes text; each sentence is spoken as soon as it is complete.
+const SENTENCE_END = /[.!?…]+["”’)]?\s+/;
+function speakSentences(buffer: string, flush: boolean) {
+  let rest = buffer;
+  for (;;) {
+    const match = SENTENCE_END.exec(rest);
+    if (!match) break;
+    const end = match.index + match[0].length;
+    void speak(rest.slice(0, end));
+    rest = rest.slice(end);
+  }
+  if (flush && rest.trim()) { void speak(rest); rest = ''; }
+  return rest;
 }
 
 function lastTranscript(history: RealtimeItem[], role: 'user' | 'assistant') {
@@ -39,6 +55,7 @@ export function useVoice() {
   const [muted, setMuted] = useState(false);
 
   const disconnect = useCallback(() => {
+    stopSpeaking();
     session.current?.close();
     session.current = null;
     releaseMicrophone();
@@ -68,6 +85,8 @@ export function useVoice() {
       transport: new OpenAIRealtimeWebRTC({ audioElement, mediaStream }),
       model: REALTIME_MODEL,
       config: {
+        // Grandma's own voice: OpenAI writes her lines, ElevenLabs says them.
+        ...(ELEVENLABS_ENABLED ? { outputModalities: ['text'] } : {}),
         audio: {
           input: { transcription: { model: 'gpt-4o-mini-transcribe', language: 'en' }, turnDetection: { type: 'semantic_vad', eagerness: 'high', createResponse: false, interruptResponse: false } },
           output: { voice: GRANDMA_VOICE, speed: GRANDMA_SPEED },
@@ -75,6 +94,14 @@ export function useVoice() {
       },
     });
     session.current = s;
+    if (ELEVENLABS_ENABLED) {
+      let pending = ''; let responseId = '';
+      s.transport.on('output_text_delta', event => {
+        if (event.responseId !== responseId) { pending = speakSentences(pending, true); responseId = event.responseId; }
+        pending = speakSentences(pending + event.delta, false);
+      });
+      s.transport.on('*', event => { if (event.type === 'response.done') pending = speakSentences(pending, true); });
+    }
     s.on('history_updated', history => {
       setGrandmaSaid(lastTranscript(history, 'assistant'));
       setYouSaid(lastTranscript(history, 'user'));
@@ -108,7 +135,9 @@ export function useVoice() {
   /** Tell Grandma about something that happened outside a tool call, e.g. the leak stopping. */
   const notify = useCallback((text: string) => { session.current?.sendMessage(text); }, []);
 
-  useEffect(() => () => { session.current?.close(); session.current = null; releaseMicrophone(); }, []);
+  // ElevenLabs (or fallback) playback drives the same speaking indicator as OpenAI audio would.
+  useEffect(() => onSpeaking(setSpeaking), []);
+  useEffect(() => () => { stopSpeaking(); session.current?.close(); session.current = null; releaseMicrophone(); }, []);
 
   /** End of the player's turn: Grandma answers whatever was said and acts on it. */
   const respond = greet;
