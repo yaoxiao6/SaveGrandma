@@ -3,6 +3,7 @@ import { gameController, simulation } from './game/session';
 import type { GameEvent } from './game/types';
 import { TUNING } from './game/config';
 import Scene from './view/Scene';
+import { useVoice } from './voice/useVoice';
 
 const DevPanel = import.meta.env.DEV ? lazy(() => import('./view/DevPanel')) : null;
 const isPlayerPreview = new URLSearchParams(location.search).has('player');
@@ -13,6 +14,8 @@ export default function App() {
   const [speed, setSpeed] = useState(1);
   const [message, setMessage] = useState('Grandma is calling from the bathroom. There’s water on the floor.');
   const developer = !!DevPanel && !isPlayerPreview;
+  const voice = useVoice();
+  const { setMute, notify } = voice;
   useEffect(() => gameController.subscribe(event => {
     if (event.type === 'state_changed') setWorld(simulation.readState());
     else if (event.type !== 'action_progress') setEvents(old => [event, ...old].slice(0, 60));
@@ -32,6 +35,15 @@ export default function App() {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visibility); };
   }, [speed, developer]);
   const terminal = world.stage === 'won' || world.stage === 'lost';
+  // Pausing (button or hidden tab) silences the mic; game outcomes are fed back to Grandma.
+  useEffect(() => { if (world.stage === 'paused') setMute(true); else if (world.stage === 'running') setMute(false); }, [world.stage, setMute]);
+  useEffect(() => {
+    if (world.stage === 'won') notify('[The leak has stopped completely! React with huge relief and thank your grandchild.]');
+    if (world.stage === 'lost') notify('[The bathroom has flooded. React, sad but brave, and say goodbye.]');
+  }, [world.stage, notify]);
+  const answer = () => { setEvents([]); gameController.start(); void voice.connect(); };
+  const newCall = () => { voice.disconnect(); gameController.reset(); setEvents([]); setMessage('A fresh call. Grandma is waiting for your help.'); };
+  const voiceLabel = voice.status === 'connected' ? (voice.muted ? 'Microphone muted' : voice.speaking ? 'Grandma is talking' : 'Listening…') : voice.status === 'microphone' ? 'Allow the microphone…' : voice.status === 'connecting' ? 'Connecting voice…' : voice.status === 'error' ? 'Voice unavailable' : 'Voice off';
   const elapsed = `${Math.floor(world.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(world.elapsed % 60).toString().padStart(2, '0')}`;
   const water = Math.round(world.water / TUNING.floodThreshold * 100);
   const observation = gameController.getObservation();
@@ -47,12 +59,12 @@ export default function App() {
             <div className="camera-view" data-testid="camera-view"><Scene world={world} />
               <div className="camera-label"><span className="camera-icon" />{world.phone.mode === 'selfie' ? 'FRONT CAMERA' : 'REAR CAMERA'}<span> {world.phone.placement === 'hand' ? 'HANDHELD' : 'ON SHELF'}</span></div>
               <div className="camera-corners" />
-              {world.stage === 'ready' && <div className="call-overlay"><div className="call-card"><span className="eyebrow">SHE COULD USE A HAND</span><h2>“Oh dear.<br />That’s a lot of water.”</h2><p>Help Grandma find the leak and stop the flood.</p><button className="primary" onClick={() => { setEvents([]); gameController.start(); }}>Answer the call <span>↗</span></button></div></div>}
+              {world.stage === 'ready' && <div className="call-overlay"><div className="call-card"><span className="eyebrow">SHE COULD USE A HAND</span><h2>“Oh dear.<br />That’s a lot of water.”</h2><p>Help Grandma find the leak and stop the flood.</p><button className="primary" onClick={answer}>Answer the call <span>↗</span></button></div></div>}
               {world.stage === 'paused' && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">TAKE A BREATH</span><h2>Call paused.</h2><p>The water and Grandma’s actions are paused.</p><button className="primary" onClick={() => gameController.resume()}>Resume call ↗</button></div></div>}
-              {terminal && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">{world.stage === 'won' ? 'CRISIS AVERTED' : 'LET’S TRY THAT AGAIN'}</span><h2>{world.stage === 'won' ? 'You saved the day.' : 'A little too much water.'}</h2><p>{world.stage === 'won' ? 'The leak has stopped. Grandma can put the kettle on.' : 'The bathroom flooded before the leak was stopped.'}</p><button className="primary" onClick={() => { gameController.reset(); setEvents([]); setMessage('A fresh call. Grandma is waiting for your help.'); }}>Start a new call ↗</button></div></div>}
+              {terminal && <div className="call-overlay"><div className="call-card compact"><span className="eyebrow">{world.stage === 'won' ? 'CRISIS AVERTED' : 'LET’S TRY THAT AGAIN'}</span><h2>{world.stage === 'won' ? 'You saved the day.' : 'A little too much water.'}</h2><p>{world.stage === 'won' ? 'The leak has stopped. Grandma can put the kettle on.' : 'The bathroom flooded before the leak was stopped.'}</p><button className="primary" onClick={newCall}>Start a new call ↗</button></div></div>}
             </div>
-            <div className="caption" role="status"><span className="caption-label">{developer ? 'SIMULATION' : 'CALL STATUS'}</span><p>{message}</p></div>
-            <div className="call-bottom"><span className="voice-status"><span className="wave">ııııı</span> Voice adapter not connected</span>{world.stage === 'running' && <button className="icon-button" aria-label="Pause call" onClick={() => gameController.pause()}>Ⅱ</button>}<span className="connection-note">{developer ? 'Use the developer panel to test actions' : 'Awaiting the team’s voice integration'}</span></div>
+            <div className="caption" role="status"><span className="caption-label">{voice.grandmaSaid ? 'GRANDMA' : developer ? 'SIMULATION' : 'CALL STATUS'}</span><div className="caption-text"><p>{voice.grandmaSaid ? `“${voice.grandmaSaid}”` : message}</p>{voice.youSaid && <p className="you-said">You: {voice.youSaid}</p>}{voice.error && <p className="voice-error">{voice.error}</p>}</div></div>
+            <div className="call-bottom"><span className={`voice-status ${voice.speaking ? 'speaking' : ''}`}><span className="wave">ııııı</span> {voiceLabel}</span>{voice.status === 'connected' && <button className="icon-button" aria-label={voice.muted ? 'Unmute microphone' : 'Mute microphone'} onClick={() => setMute(!voice.muted)}>{voice.muted ? '🔇' : '🎙'}</button>}{world.stage === 'running' && <button className="icon-button" aria-label="Pause call" onClick={() => gameController.pause()}>Ⅱ</button>}{voice.status === 'error' && world.stage === 'running' && <button className="icon-button" aria-label="Retry voice" onClick={() => void voice.connect()}>↻</button>}<span className="connection-note">{voice.status === 'connected' ? 'Talk to Grandma out loud' : developer ? 'Use the developer panel to test actions' : 'Answer to talk with Grandma'}</span></div>
           </div>
           <div className="condition-strip"><div><span className="eyebrow">WATER LEVEL</span><div className="water-line"><div className="water-track"><i style={{ width: `${water}%` }} /></div><strong>{water}%</strong></div></div><div><span className="eyebrow">GRANDMA’S STRESS</span><div className={`stress ${observation.stressBand}`}><span className="dot" />{observation.stressBand === 'low' ? 'Keeping calm' : observation.stressBand === 'medium' ? 'Getting worried' : 'Feeling overwhelmed'}</div></div><div><span className="eyebrow">THE PHONE</span><strong className="phone-condition">{world.phone.placement === 'hand' ? 'In her hand' : 'Safely on the shelf'}</strong></div></div>
           <p className="footnote"><span>↳</span> The camera goes where the phone goes. Clear directions make all the difference.</p>
