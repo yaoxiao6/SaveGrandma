@@ -1,0 +1,17 @@
+Asset provenance
+
+Filename: grandma-profile-2.png
+Contributor: Jeff Miao.
+Creator: Not supplied; confirmation pending.
+Generator: ChatGPT / gpt-image (embedded C2PA claim; signature not independently verified).
+License: Not supplied; confirmation pending. This file does not grant a license.
+Source URL: Not supplied; confirmation pending.
+SHA-256: 9c737e59edfa5479e55e76a18995ca8bcfa8710cf0a38c60cb936ba6b39966af
+
+Filename: save-grandma-title.png
+Contributor: Jeff Miao.
+Creator: Not supplied; confirmation pending.
+Generator: ChatGPT / gpt-image (embedded C2PA claim; signature not independently verified).
+License: Not supplied; confirmation pending. This file does not grant a license.
+Source URL: Not supplied; confirmation pending.
+SHA-256: 0320116a1510b3453f940e89f888b57e4a0f766d8544c84c74c55f406761292b

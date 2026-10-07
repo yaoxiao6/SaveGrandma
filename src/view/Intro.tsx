@@ -82,7 +82,7 @@ export default function Intro({ voice, onGreeting, onDone, onFinished }: { voice
   }, [phase]);
 
   if (phase === 'ringing') return <div className="intro-black incoming-call" role="dialog" aria-label="Incoming call from Granny">
-    <div className="caller-avatar" aria-hidden="true" />
+    <div className="caller-avatar" aria-hidden="true"><img src="/images/grandma-profile.png" alt="" width={1254} height={1254} /></div>
     <h2>Granny</h2>
     <p>{answered ? 'Connecting…' : 'incoming call'}</p>
     <button type="button" className="answer-button" onClick={() => setAnswered(true)} disabled={answered} aria-label="Answer the call">

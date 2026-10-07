@@ -1,0 +1,5 @@
+Asset provenance
+
+grandma-profile.png and save-grandma-title.png are copies of downloads/grandma-profile-2.png and
+downloads/save-grandma-title.png, contributed by Jeff Miao. See downloads/LICENSE.txt for the full
+record (generator, hashes). License and source are still pending confirmation.

@@ -89,9 +89,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .bubbles i { position: absolute; bottom: -120px; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #ffffffd9, #ffffff55 55%, #ffffff22 70%); border: 3px solid #ffffffaa; animation: bubble-rise 11s linear infinite; }
 @keyframes bubble-rise { to { transform: translateY(-115vh) translateX(20px); } }
 .start-card { position: relative; text-align: center; display: grid; gap: 30px; justify-items: center; }
-.start-card h1 { font-family: SignPainter, "SignPainter-HouseScript", "Caveat Brush", cursive; font-weight: 400; letter-spacing: 1px; line-height: .9; margin: 0; display: grid; color: #fff7c2; transform: rotate(-4deg); -webkit-text-stroke: 2px #3b2a4a; paint-order: stroke fill; text-shadow: 0 7px 0 #3b2a4a, 0 10px 24px #1b3a6a44; }
-.start-card h1 span { font-size: clamp(64px, 12vw, 136px); }
-.start-card h1 span:last-child { color: #ffd23f; font-size: clamp(80px, 15vw, 172px); margin-top: 2px; }
+.start-title { margin: 0; transform: rotate(-3deg); }
+.start-title img { display: block; width: min(92vw, 560px); height: auto; border-radius: 24px; border: 4px solid #3b2a4a; box-shadow: 0 10px 0 #3b2a4a, 0 18px 40px #1b3a6a55; }
 .start-button { font-family: "Google Sans", inherit; font-weight: 700; font-size: clamp(28px, 4vw, 42px); color: #3b2a4a; background: linear-gradient(#ffe36e, #ffc81f); border: 5px solid #3b2a4a; border-radius: 999px; padding: 14px 72px; box-shadow: 0 9px 0 #3b2a4a, inset 0 -6px 0 #e8a800, inset 0 4px 0 #fff4b8; transition: transform .12s, box-shadow .12s; animation: wiggle 2.4s ease-in-out infinite; }
 .start-button:hover:not(:disabled) { background: linear-gradient(#fff0a0, #ffd23f); transform: translateY(-3px) scale(1.04); box-shadow: 0 12px 0 #3b2a4a, inset 0 -6px 0 #e8a800, inset 0 4px 0 #fff4b8; }
 .start-button:active { transform: translateY(6px); box-shadow: 0 3px 0 #3b2a4a, inset 0 -6px 0 #e8a800; }
@@ -101,7 +100,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 /* Cinematic intro */
 .intro-black { position: absolute; inset: 0; z-index: 20; background: #000; }
 .incoming-call { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ink); text-align: center; padding: 24px; background: radial-gradient(circle at 50% 30%, #1d2824, #000 75%); }
-.incoming-call .caller-avatar { width: 112px; height: 112px; border-radius: 50%; background: #ffffff22; border: 2px dashed #ffffff55; margin-bottom: 14px; animation: ring-pulse 1.4s ease-in-out infinite; }
+.incoming-call .caller-avatar { width: 132px; height: 132px; border-radius: 50%; overflow: hidden; background: #4f93cc; border: 3px solid #ffffff66; margin-bottom: 14px; animation: ring-pulse 1.4s ease-in-out infinite; }
+.incoming-call .caller-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .incoming-call h2 { margin: 0; font-size: 32px; font-weight: 500; letter-spacing: -.5px; }
 .incoming-call p { margin: 0 0 56px; font-size: 14px; color: var(--ink-dim); letter-spacing: .3px; }
 .answer-button { width: 76px; height: 76px; padding: 0; border-radius: 50%; border: 0; background: #2fc24e; color: #fff; display: grid; place-items: center; box-shadow: 0 0 0 0 #2fc24e88; animation: answer-pulse 1.4s ease-out infinite; }
