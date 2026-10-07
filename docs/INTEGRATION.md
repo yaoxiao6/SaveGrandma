@@ -42,6 +42,8 @@ Use the app singleton for one game. `createCommandSession(controller)` is availa
 
 `ACTION_REQUEST_SCHEMA` is ordinary JSON Schema, not an SDK-specific strict tool schema. The controller and session validate against the same definition with `isActionRequest`. Unknown fields and qualifiers are rejected instead of silently ignored. Optional fields remain optional: for example, omitting rotation direction produces a gameplay clarification. Providers with stricter schema restrictions can adapt the schema while preserving this contract. No parsing, provider credentials or network transport is supplied here.
 
+`src/voice/text-commands.ts` is a typed-text placeholder that produces `CommandStep[]` from a keyword matcher so the loop is playable before speech exists; `App.tsx` shows how it is wired. Replace it rather than extend it.
+
 The original low-level controller below remains supported. Its raw queue intentionally does not stop automatically after errors; prefer `gameCommands` for spoken compound instructions.
 
 Import the app’s singleton, not a second simulation:
