@@ -20,7 +20,7 @@ function fetchAudioUrl(text: string) {
   const cached = cache.get(text);
   if (cached) return cached;
   const pending = (async () => {
-    const response = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    const response = await fetch(`${import.meta.env.BASE_URL}api/speak`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
     if (!response.ok) throw new Error(`speak proxy ${response.status}: ${(await response.text().catch(() => '')).slice(0, 200)}`);
     return URL.createObjectURL(await response.blob());
   })();

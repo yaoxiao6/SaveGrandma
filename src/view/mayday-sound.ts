@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** Looping alarm for the final minute. Served from public/audio; swap the file to change the sound. */
-export const ALARM_TRACK = '/audio/alarm.mp3';
+export const ALARM_TRACK = `${import.meta.env.BASE_URL}audio/alarm.mp3`;
 const VOLUME = 0.22;
 const FADE_MS = 400;
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** Looping water ambience. Served from public/audio; swap the file to change the sound. */
-export const LEAK_TRACK = '/audio/water-leak.mp3';
+export const LEAK_TRACK = `${import.meta.env.BASE_URL}audio/water-leak.mp3`;
 const BASE_VOLUME = 0.35;
 const MAX_VOLUME = 0.85;
 const FADE_MS = 500;

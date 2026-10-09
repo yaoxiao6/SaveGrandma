@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** Title-screen music. Served from public/audio; swap the file to change the track. */
-export const INTRO_TRACK = '/audio/buant-two-step.mp3';
+export const INTRO_TRACK = `${import.meta.env.BASE_URL}audio/buant-two-step.mp3`;
 const LEVELS = { title: 0.5, intro: 0.22 } as const;
 const FADE_MS = 1400;
 const STOP_MS = 350;

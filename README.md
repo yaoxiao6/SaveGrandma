@@ -11,13 +11,14 @@ npm ci
 npm run dev
 ```
 
-Voice: copy `.env.example` to `.env.local` and set `OPENAI_API_KEY`, then restart the dev server. Starting the call connects Grandma (`gpt-realtime-2.1-mini` over WebRTC via the OpenAI Agents SDK); allow microphone access and talk to her. The key stays in the Vite server, which mints short-lived client secrets at `POST /api/realtime-token`. Voice code lives in `src/voice/`.
+Voice: copy `.env.example` to `.env.local` and set `OPENAI_API_KEY`, then restart the dev server. Starting the call connects Grandma (`gpt-realtime-2.1-mini` over WebRTC via the OpenAI Agents SDK); allow microphone access and talk to her. The key stays in the Vite server (shared handlers in `server/api.ts`), which mints short-lived client secrets at `POST /api/realtime-token`. Voice code lives in `src/voice/`.
 
 Open the printed localhost URL. The game is a portrait 9:16 phone screen, as if you were video-calling Grandma. Press Start, let the intro call connect, then type instructions in the field at the bottom and press Enter. The mic button above it is a placeholder for the voice agent. Typed text is a **placeholder for Yao’s voice agent**: it goes through a small keyword matcher in `src/voice/text-commands.ts` and then the same `gameCommands` bridge the voice adapter will use. Type `help` for example phrases. The call opens on the front camera, looking at Grandma; asking her to switch to the rear camera is part of the challenge. The quickest win is `switch to the rear camera, go to the toolboxes, open the red toolbox, open the blue toolbox, open the green toolbox, pick up the wrench, walk to the pipe, bend down, tighten the pipe`. Compound lines split on commas, “then” and “and”, and stop at the first failed step.
 
 - `npm test` — deterministic simulation and controller tests.
 - `npm run check` — TypeScript and simulation tests.
 - `npm run build` — checked production build in `dist/`.
+- `npm run build:deploy` — production build plus the API Lambda bundle; deploying to yaox.ai/savegrandma is covered in [docs/DEPLOY.md](docs/DEPLOY.md).
 - `npm run preview` — serve the production build locally.
 - `npm run smoke` — Chrome browser scenarios against the running dev server (typed-instruction wrench solution, clarification, objectives toggle, 9:16 frame).
 - `BROWSER_CHANNEL=msedge npm run smoke` — the same tests in installed desktop Edge.

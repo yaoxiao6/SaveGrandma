@@ -12,7 +12,7 @@ export const RULES = [
   'Be specific: “open the red toolbox”, “turn the pipe counterclockwise”.',
 ];
 /** Served from public/audio; loops until the call is answered. */
-const RINGTONE = '/audio/iphone-ringtone.mp3';
+const RINGTONE = `${import.meta.env.BASE_URL}audio/iphone-ringtone.mp3`;
 const FALLBACK_GREETING_SECONDS = 6;
 const MAX_CONNECT_WAIT_SECONDS = 12;
 const MAX_GREETING_SECONDS = 7;
@@ -84,7 +84,7 @@ export default function Intro({ voice, onGreeting, onDone, onFinished }: { voice
   }, [phase]);
 
   if (phase === 'ringing') return <div className="intro-black incoming-call" role="dialog" aria-label="Incoming call from Granny">
-    <div className="caller-avatar" aria-hidden="true"><img src="/images/grandma-profile.png" alt="" width={1254} height={1254} /></div>
+    <div className="caller-avatar" aria-hidden="true"><img src={`${import.meta.env.BASE_URL}images/grandma-profile.png`} alt="" width={1254} height={1254} /></div>
     <h2>Granny</h2>
     <p>{answered ? 'Connecting…' : 'incoming call'}</p>
     <button type="button" className="answer-button" onClick={() => setAnswered(true)} disabled={answered} aria-label="Answer the call">

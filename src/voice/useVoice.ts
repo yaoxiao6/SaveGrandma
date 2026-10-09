@@ -9,7 +9,7 @@ export type VoiceStatus = 'idle' | 'microphone' | 'connecting' | 'connected' | '
 const CONNECT_TIMEOUT_MS = 20_000;
 
 async function fetchClientSecret() {
-  const response = await fetch('/api/realtime-token', { method: 'POST' });
+  const response = await fetch(`${import.meta.env.BASE_URL}api/realtime-token`, { method: 'POST' });
   const data = await response.json().catch(() => ({})) as { value?: string; error?: string };
   if (!response.ok || !data.value) throw new Error(data.error ?? `Token request failed (${response.status}).`);
   return data.value;

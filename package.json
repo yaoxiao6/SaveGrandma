@@ -9,7 +9,9 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "check": "tsc -b && vitest run",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "build:server": "esbuild server/lambda.ts --bundle --platform=node --target=node22 --format=esm --external:@aws-sdk/* --outfile=dist-server/index.mjs",
+    "build:deploy": "VITE_ELEVENLABS_VOICE=true npm run build && npm run build:server"
   },
   "dependencies": {
     "@openai/agents": "^0.19.0",
@@ -20,6 +22,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@aws-sdk/client-ssm": "^3.1148.0",
     "@types/node": "^22.18.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
