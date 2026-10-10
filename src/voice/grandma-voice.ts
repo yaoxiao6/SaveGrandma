@@ -8,6 +8,9 @@
  */
 export const ELEVENLABS_ENABLED = import.meta.env.VITE_ELEVENLABS_VOICE === 'true';
 
+/** Removes ElevenLabs delivery tags like "[panicked]" from a line, for captions and the browser-speech fallback. */
+export const stripDeliveryTags = (text: string) => text.replace(/\[[^\]\n]{1,40}\]\s*/g, '').trim();
+
 type Listener = (speaking: boolean) => void;
 const listeners = new Set<Listener>();
 /** Observe whether Grandma is currently talking through this module. */
@@ -83,8 +86,8 @@ function speakWithBrowser(text: string): Promise<void> {
   if (typeof speechSynthesis === 'undefined') return Promise.resolve();
   if (current) speechSynthesis.cancel();
   return new Promise(resolve => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.92; utterance.pitch = 1.25; utterance.volume = 1;
+    const utterance = new SpeechSynthesisUtterance(stripDeliveryTags(text));
+    utterance.rate = 1.15; utterance.pitch = 1.35; utterance.volume = 1;
     const voices = speechSynthesis.getVoices();
     const preferred = voices.find(v => /en/i.test(v.lang) && /female|samantha|karen|moira|victoria|zira/i.test(v.name)) ?? voices.find(v => /^en/i.test(v.lang));
     if (preferred) utterance.voice = preferred;

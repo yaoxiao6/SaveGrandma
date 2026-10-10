@@ -26,7 +26,19 @@ export async function realtimeToken(apiKey: string | undefined): Promise<ApiResu
 }
 
 // Grandma's ElevenLabs voice. The browser posts { text }; the key and voice ID stay here.
-const ELEVENLABS_MODEL = 'eleven_flash_v2_5';
+// v3 is the expressive model: it acts out [bracketed] delivery tags instead of reading them.
+const ELEVENLABS_MODEL = 'eleven_v3';
+const V3 = ELEVENLABS_MODEL === 'eleven_v3';
+// v3 stability is 0 (Creative), 0.5 (Natural) or 1 (Robust) only. Creative is the most emotional.
+const VOICE_SETTINGS = V3
+  ? { stability: 0, similarity_boost: 0.75, speed: 1.12 }
+  : { stability: 0.25, similarity_boost: 0.75, style: 0.7, use_speaker_boost: true, speed: 1.12 };
+const DELIVERY_TAG = /\[[^\]\n]{1,40}\]\s*/g;
+/** Every line gets a delivery tag on v3 (Grandma's own if she wrote one); older models would read tags aloud, so they lose them. */
+function withDelivery(line: string) {
+  if (!V3) return line.replace(DELIVERY_TAG, '').trim();
+  return /^\s*\[/.test(line) ? line : `[panicked] ${line}`;
+}
 export async function speak(apiKey: string | undefined, voiceId: string | undefined, rawBody: string): Promise<ApiResult> {
   if (!apiKey || !voiceId) return text(500, 'ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID are not set.');
   try {
@@ -35,7 +47,7 @@ export async function speak(apiKey: string | undefined, voiceId: string | undefi
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128`, {
       method: 'POST',
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: line, model_id: ELEVENLABS_MODEL, voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true } }),
+      body: JSON.stringify({ text: withDelivery(line), model_id: ELEVENLABS_MODEL, voice_settings: VOICE_SETTINGS }),
     });
     if (!response.ok || !response.body) return text(502, `ElevenLabs ${response.status}: ${(await response.text().catch(() => '')).slice(0, 300)}`);
     return { status: 200, contentType: 'audio/mpeg', body: response.body };

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { OpenAIRealtimeWebRTC, RealtimeSession, type RealtimeItem } from '@openai/agents/realtime';
 import { grandmaAgent } from './grandma';
 import { GRANDMA_SPEED, GRANDMA_VOICE, REALTIME_MODEL } from './model';
-import { ELEVENLABS_ENABLED, onSpeaking, speak, stopSpeaking } from './grandma-voice';
+import { ELEVENLABS_ENABLED, onSpeaking, speak, stopSpeaking, stripDeliveryTags } from './grandma-voice';
 
 export type VoiceStatus = 'idle' | 'microphone' | 'connecting' | 'connected' | 'error';
 
@@ -113,7 +113,7 @@ export function useVoice() {
       s.transport.on('*', event => { if (event.type === 'response.done') pending = speakSentences(pending, true); });
     }
     s.on('history_updated', history => {
-      setGrandmaSaid(lastTranscript(history, 'assistant'));
+      setGrandmaSaid(stripDeliveryTags(lastTranscript(history, 'assistant')));
       setYouSaid(lastTranscript(history, 'user'));
     });
     s.on('transport_event', event => {
