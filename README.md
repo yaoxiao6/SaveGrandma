@@ -1,5 +1,7 @@
 # Save Grandma
 
+Originally built by [gibumkang](https://github.com/gibumkang) with Jeff Miao and Yao Xiao for the Fishathon ([original repo](https://github.com/gibumkang/help-me-grandma)). All rights remain with the original authors. Live at https://yaox.ai/savegrandma/.
+
 A playable, placeholder bathroom emergency for the Fishathon team. The player sees through Grandma’s phone. A typed simulation controller executes instructions; the voice teammate will supply those instructions and turn results into dialogue.
 
 ## Run locally
