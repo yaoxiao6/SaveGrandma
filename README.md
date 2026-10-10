@@ -1,6 +1,20 @@
 # Save Grandma
 
-Originally built by [gibumkang](https://github.com/gibumkang) with Jeff Miao and Yao Xiao for the Fishathon ([original repo](https://github.com/gibumkang/help-me-grandma)). All rights remain with the original authors. Live at https://yaox.ai/savegrandma/.
+**Play it: [yaox.ai/savegrandma](https://yaox.ai/savegrandma/)**
+
+Grandma's bathroom pipe has burst and she's on a video call with you. Talk her through finding the right tool and fixing the leak before the room floods.
+
+Built at [The Conversational AI x Gaming Hackathon](https://partiful.com/e/W25eAHOwujJeD9lJKTat) during #SFTechWeek.
+
+## Authors
+
+- [@gibumkang](https://github.com/gibumkang): game simulation and integration
+- [@TheChairmanMiao](https://github.com/TheChairmanMiao) (Jeff Miao): creative assets and presentation
+- [@yaoxiao6](https://github.com/yaoxiao6) (Yao Xiao): voice AI and deployment
+
+Code is MIT-licensed; see [LICENSE](LICENSE). Third-party audio, images and models keep their own terms.
+
+## About this codebase
 
 A playable, placeholder bathroom emergency for the Fishathon team. The player sees through Grandma’s phone. A typed simulation controller executes instructions; the voice teammate will supply those instructions and turn results into dialogue.
 
@@ -54,4 +68,3 @@ No voice SDK, microphone capture, natural-language parser, generated speech, voi
 The command-session bridge accepts the structured actions produced by Yao’s interpreter. It handles same-run interruptions, stale AI responses, duplicate delivery, and ordered sequences that stop at the first issue. The typed-instruction placeholder uses this bridge too, so a new line typed mid-sequence interrupts Grandma the same way barge-in speech will. The simulation advances in fixed 50 ms steps, independent of browser frame rate.
 
 The custom React 19 + React Three Fiber 9 setup follows the [renderer’s compatibility guidance](https://r3f.docs.pmnd.rs/getting-started/installation). This is a standalone app, outside the starter repo’s `game-kit/` folder. See the hackathon notes for why the starter’s folder-specific JavaScript engine rules do not require a stack change here.
-# help-me-grandma
