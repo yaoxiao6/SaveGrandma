@@ -60,6 +60,7 @@ export const handler = awslambda.streamifyResponse(async (event, responseStream)
     statusCode: result.status,
     headers: { 'Content-Type': result.contentType, 'Cache-Control': 'no-store' },
   });
-  if (typeof result.body === 'string') { stream.end(result.body); return; }
-  await pipeline(Readable.fromWeb(result.body as import('node:stream/web').ReadableStream), stream);
+  // Await the full pipeline: returning before the stream finishes makes the function URL answer 502.
+  const body = typeof result.body === 'string' ? Readable.from([result.body]) : Readable.fromWeb(result.body as import('node:stream/web').ReadableStream);
+  await pipeline(body, stream);
 });
